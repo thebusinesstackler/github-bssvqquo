@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == 'theranovex@gmail.com' || 
+         request.auth.token.email == 'digitaltackler@gmail.com');
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Partners collection
+    match /partners/{partnerId} {
+      // Allow read access to all authenticated users
+      allow read: if isAuthenticated();
+      
+      // Allow creation during signup
+      allow create: if isAuthenticated() && 
+        request.auth.uid == partnerId;
+      
+      // Allow updates if admin or owner (but can't change role if owner)
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (isOwner(partnerId) && request.resource.data.role == resource.data.role)
+      );
+      
+      // Only admin can delete
+      allow delete: if isAdmin();
+
+      // Leads subcollection
+      match /leads/{leadId} {
+        // Allow partners to read their own leads
+        allow read: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
+        
+        // Allow partners to create leads in their own collection
+        allow create: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
+        
+        // Allow partners to update their own leads
+        allow update: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
+        
+        // Allow partners to delete their own leads
+        allow delete: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
+      }
+
+      // Sites subcollection
+      match /sites/{siteId} {
+        allow read, write: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
+      }
+
+      // Messages subcollection
+      match /messages/{messageId} {
+        allow read, write: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
+      }
+
+      // Notifications subcollection
+      match /notifications/{notificationId} {
+        allow read, write: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
+      }
+    }
+
+    // Messages collection (root level)
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        (resource != null && 
+          (request.auth.uid == resource.data.senderId || 
+           request.auth.uid == resource.data.recipientId))
+      );
+      allow write: if isAuthenticated() && (
+        isAdmin() || 
+        (request.resource != null && 
+         request.auth.uid == request.resource.data.senderId)
+      );
+    }
+
+    // Notifications collection (root level)
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        (resource != null && request.auth.uid == resource.data.partnerId)
+      );
+      allow write: if isAuthenticated() && (
+        isAdmin() || 
+        (request.resource != null && 
+         request.auth.uid == request.resource.data.partnerId)
+      );
+    }
+
+    // Screener forms collection
+    match /screenerForms/{formId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (
+        isAuthenticated() && 
+        resource != null && 
+        request.auth.uid in resource.data.assignedPartners
+      );
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "partners": {
+      "$partnerId": {
+        ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)",
+        ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)",
+        "customers": {
+          ".indexOn": ["createdAt", "status"],
+          "$customerId": {
+            ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)",
+            ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)"
+          }
+        },
+        "leads": {
+          ".indexOn": ["createdAt", "status"],
+          "$leadId": {
+            ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)",
+            ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)"
+          }
+        }
+      }
+    },
+    "messages": {
+      ".indexOn": ["createdAt", "leadId"],
+      "$messageId": {
+        ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || data.child('senderId').val() == auth.uid || data.child('recipientId').val() == auth.uid)",
+        ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || !data.exists() || data.child('senderId').val() == auth.uid)"
+      }
+    },
+    "notifications": {
+      "$userId": {
+        ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $userId)",
+        ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $userId)",
+        ".indexOn": ["createdAt", "read"]
+      }
+    }
+  }
+}
