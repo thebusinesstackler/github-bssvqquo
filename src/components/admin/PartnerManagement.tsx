@@ -108,7 +108,7 @@ export function PartnerManagement() {
     const matchesStatus = filterStatus === 'all' || 
       (filterStatus === 'active' ? partner.active : !partner.active);
     const matchesSubscription = filterSubscription === 'all' || 
-      partner.subscription === filterSubscription;
+      partner.subscription.toLowerCase() === filterSubscription.toLowerCase();
     
     return matchesSearch && matchesStatus && matchesSubscription;
   }).sort((a, b) => {

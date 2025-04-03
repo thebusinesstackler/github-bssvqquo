@@ -39,9 +39,7 @@ export function Sidebar() {
     { icon: MessageSquare, label: 'Messages', path: '/messages', role: 'partner' },
     { icon: Megaphone, label: 'Promote Study', path: '/customers', role: 'partner' },
     { icon: HelpCircle, label: 'Support', path: '/support', role: 'partner' },
-    
-    // Common Items
-    { icon: Settings, label: 'Settings', path: '/settings' }
+    { icon: Settings, label: 'Settings', path: '/settings', role: 'partner' }
   ];
 
   const filteredItems = sidebarItems.filter(item => 

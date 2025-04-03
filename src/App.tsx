@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { LeadDashboard } from './components/LeadDashboard';
-import { SettingsPage } from './components/SettingsPage';
 import { MessagesPage } from './components/MessagesPage';
 import { MyLeadsPage } from './components/MyLeadsPage';
 import { LeadDetailsPage } from './components/LeadDetailsPage';
@@ -19,6 +18,8 @@ import { Navigation } from './components/Navigation';
 import { Sidebar } from './components/Sidebar';
 import { useAuthStore } from './store/useAuthStore';
 import { LeadDashboard as PartnerDashboard } from './components/LeadDashboard';
+import { SettingsPage } from './components/SettingsPage';
+import { BillingResultPage } from './components/BillingResultPage';
 
 function App() {
   const { user, impersonatedUser, initializeAuthState } = useAuthStore();
@@ -69,6 +70,7 @@ function App() {
                   <Route path="/support" element={<SupportPage />} />
                   <Route path="/pricing" element={<PricingPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/settings/billing" element={<BillingResultPage />} />
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </>

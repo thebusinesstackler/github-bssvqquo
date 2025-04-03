@@ -39,24 +39,7 @@ export default function PricingPage() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [receipts, setReceipts] = useState<Receipt[]>([
-    {
-      id: '1',
-      date: new Date(),
-      amount: 299.00,
-      description: 'Professional Plan - Monthly Subscription',
-      status: 'paid',
-      downloadUrl: '#'
-    },
-    {
-      id: '2',
-      date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-      amount: 299.00,
-      description: 'Professional Plan - Monthly Subscription',
-      status: 'paid',
-      downloadUrl: '#'
-    }
-  ]);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
 
   const [cardDetails, setCardDetails] = useState({
     number: '',

@@ -28,29 +28,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   initializeAuthState: () => {
     try {
-      // Try to restore session from localStorage first
-      const storedSession = localStorage.getItem('userSession');
-      const storedImpersonation = localStorage.getItem('impersonatedUser');
-      
-      if (storedSession) {
-        try {
-          const userData = JSON.parse(storedSession);
-          const impersonatedData = storedImpersonation ? JSON.parse(storedImpersonation) : null;
-          set({ 
-            user: userData,
-            impersonatedUser: impersonatedData,
-            isLoading: false,
-            initialized: true 
-          });
-        } catch (error) {
-          console.error('Error restoring session:', error);
-          localStorage.removeItem('userSession');
-          localStorage.removeItem('impersonatedUser');
-        }
-      }
-
       // Set up auth state listener
-      const unsubscribe = initializeAuth((user: FirebaseUser | null) => {
+      return initializeAuth((user: FirebaseUser | null) => {
         if (!user) {
           set({ 
             user: null, 
@@ -63,27 +42,58 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           return;
         }
 
-        // User is already authenticated, update the store
-        const userData = {
-          id: user.uid,
-          email: user.email || '',
-          name: user.displayName || '',
-          role: (user.email === 'theranovex@gmail.com' || user.email === 'digitaltackler@gmail.com') ? 'admin' : 'partner',
-          createdAt: new Date(user.metadata?.creationTime || Date.now()),
-          active: true
-        };
-
-        set({ 
-          user: userData,
-          isLoading: false,
-          initialized: true
-        });
-
-        // Store session
-        localStorage.setItem('userSession', JSON.stringify(userData));
+        // Try to restore session from localStorage first
+        const storedSession = localStorage.getItem('userSession');
+        const storedImpersonation = localStorage.getItem('impersonatedUser');
+        
+        try {
+          if (storedSession) {
+            const userData = JSON.parse(storedSession);
+            const impersonatedData = storedImpersonation ? JSON.parse(storedImpersonation) : null;
+            set({ 
+              user: userData,
+              impersonatedUser: impersonatedData,
+              isLoading: false,
+              initialized: true 
+            });
+          } 
+          else {
+            // User is already authenticated, update the store
+            const userData = {
+              id: user.uid,
+              email: user.email || '',
+              name: user.displayName || '',
+              firstName: user.displayName?.split(' ')[0] || '',
+              role: (user.email === 'theranovex@gmail.com' || user.email === 'digitaltackler@gmail.com') ? 'admin' : 'partner',
+              createdAt: new Date(user.metadata?.creationTime || Date.now()),
+              active: true,
+              subscription: 'basic',
+              maxLeads: 50
+            };
+    
+            set({ 
+              user: userData,
+              isLoading: false,
+              initialized: true
+            });
+    
+            // Store session
+            localStorage.setItem('userSession', JSON.stringify(userData));
+          }
+        }
+        catch (error) {
+          console.error('Error restoring session:', error);
+          localStorage.removeItem('userSession');
+          localStorage.removeItem('impersonatedUser');
+          set({ 
+            user: null,
+            impersonatedUser: null,
+            isLoading: false,
+            initialized: true,
+            error: 'Failed to restore session'
+          });
+        }
       });
-
-      return unsubscribe;
     } catch (error) {
       console.error('Error in initializeAuthState:', error);
       set({ 
@@ -141,15 +151,51 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         throw new Error('No user logged in');
       }
 
+      // Validate updates
+      const validatedUpdates: Partial<User> = {};
+      
+      if (typeof updates.name === 'string') {
+        validatedUpdates.name = updates.name;
+      }
+
+      if (typeof updates.firstName === 'string') {
+        validatedUpdates.firstName = updates.firstName;
+      }
+      
+      if (typeof updates.email === 'string') {
+        validatedUpdates.email = updates.email;
+      }
+      
+      if (typeof updates.phone === 'string') {
+        validatedUpdates.phone = updates.phone;
+      }
+
+      // Handle subscription-related updates
+      if (updates.subscription) {
+        validatedUpdates.subscription = updates.subscription;
+      }
+
+      if (updates.stripeCustomerId) {
+        validatedUpdates.stripeCustomerId = updates.stripeCustomerId;
+      }
+
+      if (updates.subscriptionId) {
+        validatedUpdates.subscriptionId = updates.subscriptionId;
+      }
+
+      if (typeof updates.maxLeads === 'number') {
+        validatedUpdates.maxLeads = updates.maxLeads;
+      }
+
       // Update Firestore document
       const userRef = doc(db, 'partners', currentUser.id);
       await updateDoc(userRef, {
-        ...updates,
+        ...validatedUpdates,
         updatedAt: new Date()
       });
 
       // Update local state
-      const updatedUser = { ...currentUser, ...updates };
+      const updatedUser = { ...currentUser, ...validatedUpdates };
       localStorage.setItem('userSession', JSON.stringify(updatedUser));
       set({ 
         user: updatedUser,

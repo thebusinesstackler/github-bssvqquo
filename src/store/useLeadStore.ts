@@ -16,6 +16,9 @@ import {
   getDoc,
   deleteDoc
 } from 'firebase/firestore';
+import { 
+  getAuth
+} from 'firebase/auth';
 
 interface LeadStore {
   leads: Lead[];
@@ -115,17 +118,37 @@ export const useLeadStore = create<LeadStore>((set, get) => ({
         throw new Error('Partner ID is required');
       }
 
-      // Add lead to Firestore under the partner's leads subcollection
+      // Get current user
+      const auth = getAuth();
+      const user = auth.currentUser;
+      
+      if (!user) {
+        throw new Error('User must be authenticated');
+      }
+
+      // Verify the partner document exists first
+      const partnerRef = doc(db, 'partners', partnerId);
+      const partnerSnap = await getDoc(partnerRef);
+      
+      if (!partnerSnap.exists()) {
+        throw new Error('Specified partner does not exist');
+      }
+
+      // Add lead to Firestore
       const leadsRef = collection(db, 'partners', partnerId, 'leads');
       const docRef = await addDoc(leadsRef, {
         ...leadFields,
+        createdBy: user.uid, // Track who created the lead
         createdAt: serverTimestamp(),
         lastUpdated: serverTimestamp()
       });
 
       // Create notification for the new lead
-      await addDoc(collection(db, 'notifications'), {
+      // 2. Add notification as subcollection
+      const notificationsRef = collection(db, 'partners', partnerId, 'notifications');
+      await addDoc(notificationsRef, {
         partnerId,
+        leadId: docRef.id,
         title: 'New Lead Assigned',
         message: `A new lead (${leadData.firstName} ${leadData.lastName}) has been assigned to your site for ${leadData.indication}.`,
         type: 'system',
@@ -134,7 +157,9 @@ export const useLeadStore = create<LeadStore>((set, get) => ({
       });
 
       // Add a message for the partner
-      await addDoc(collection(db, 'messages'), {
+      // 3. Add initial message as subcollection
+      const messagesRef = collection(db, 'partners', partnerId, 'messages');
+      await addDoc(messagesRef, {
         partnerId,
         leadId: docRef.id,
         content: `New lead assigned: ${leadData.firstName} ${leadData.lastName} - ${leadData.indication}. Please review and contact the patient within 24 hours.`,

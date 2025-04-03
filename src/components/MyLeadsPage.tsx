@@ -92,10 +92,17 @@ export function MyLeadsPage() {
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveId(null);
-    
-    if (over && active.id !== over.id) {
+
+    if (!over) return;
+
+    let newStatus: string | null = null;
+    console.log("over:", over);
+
+    newStatus = over.data.current?.status;
+    console.log('Dropped on column:', newStatus);
+
+    if (newStatus) {
       const leadId = active.id as string;
-      const newStatus = over.id as string;
       try {
         await updateLeadStatus(leadId, newStatus as any);
       } catch (error) {
@@ -353,6 +360,7 @@ export function MyLeadsPage() {
                   status={status}
                   title={title}
                   count={columnLeads.length}
+                  data-status={status}
                 >
                   <SortableContext
                     items={columnLeads.map(lead => lead.id)}

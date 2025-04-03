@@ -52,6 +52,8 @@ export interface Partner {
   billing: BillingInfo;
   notificationSettings: NotificationSettings;
   assignedForms?: string[];
+  stripeCustomerId?: string;
+  subscriptionId?: string;
 }
 
 export type SubscriptionTier = 'basic' | 'professional' | 'enterprise';
@@ -77,6 +79,8 @@ export interface BillingInfo {
     type: string;
     last4: string;
   };
+  stripeSubscriptionId?: string;
+  stripePriceId?: string;
 }
 
 export interface NotificationSettings {
@@ -91,12 +95,24 @@ export interface NotificationSettings {
 export interface User {
   id: string;
   name: string;
+  firstName?: string;
   email: string;
   role: 'admin' | 'partner';
   active: boolean;
   createdAt: Date;
   subscription?: SubscriptionTier;
   maxLeads?: number;
+  stripeCustomerId?: string;
+  phone?: string;
+  title?: string;
+  organization?: string;
+  photoURL?: string;
+  billing?: {
+    plan: SubscriptionTier;
+    status: 'active' | 'past_due' | 'canceled';
+    nextBillingDate: Date;
+    amount: number;
+  };
 }
 
 export interface AdminMetrics {
@@ -159,4 +175,57 @@ export interface FormResponse {
   submittedAt: Date;
   score?: number;
   qualified?: boolean;
+}
+
+export interface PaymentDetails {
+  cardholderName: string;
+  cardNumber: string;
+  expiryDate: string;
+  cvc: string;
+}
+
+export interface PaymentErrors {
+  cardholderName?: string;
+  cardNumber?: string;
+  expiryDate?: string;
+  cvc?: string;
+}
+
+export interface StripePrice {
+  id: string;
+  product: string;
+  unit_amount: number;
+  currency: string;
+  recurring: {
+    interval: string;
+    interval_count: number;
+  };
+  metadata: {
+    tier: SubscriptionTier;
+    maxLeads: number;
+  };
+}
+
+export interface PaymentMethod {
+  id: string;
+  type: string;
+  card?: {
+    brand: string;
+    last4: string;
+    exp_month: number;
+    exp_year: number;
+  };
+  billing_details?: {
+    name: string;
+    email: string;
+    phone?: string;
+    address?: {
+      line1?: string;
+      line2?: string;
+      city?: string;
+      state?: string;
+      postal_code?: string;
+      country?: string;
+    };
+  };
 }
