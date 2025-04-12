@@ -406,3 +406,19 @@ export interface Invoice {
     quantity?: number;
   }[];
 }
+
+export interface SubscriptionInformation {
+  amount: number;
+  plan: string;
+  priceId: string;
+}
+
+export interface PaymentIntentInformation {
+  paymentMethodId?: string;
+  subscription: SubscriptionInformation;
+  partnerId: string;
+}
+
+export interface PaymentIntent {
+  id: string;
+}

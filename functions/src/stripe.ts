@@ -11,7 +11,7 @@ const getStripe = () => {
     throw new Error('Missing Stripe secret key');
   }
   return new Stripe(secretKey, {
-    apiVersion: '2023-10-16'
+    apiVersion: '2024-04-10'
   });
 };
 
@@ -34,10 +34,6 @@ export const createCheckoutSession = functions.firestore
       // If this is created by an admin for another user, log this information
       if (adminId) {
         functions.logger.info(`Admin ${adminId} is creating checkout for partner ${partnerId} (${partnerEmail})`);
-      }
-
-      // Get the partner document to see if they already have a Stripe customer ID
-      const partnerDoc = await db.collection('partners').doc(partnerId).get();
       const partnerData = partnerDoc.data();
       
       let customerId = partnerData?.stripeCustomerId;
@@ -115,7 +111,7 @@ export const createPortalSession = functions.firestore
           limit: 1
         });
         
-        if (customers.data.length === 0) {
+       if (customers.data.length === 0) {
           throw new Error(`No Stripe customer found for email: ${partnerEmail}`);
         }
         
@@ -124,10 +120,10 @@ export const createPortalSession = functions.firestore
         await db.collection('partners').doc(partnerId).update({
           stripeCustomerId: foundCustomerId
         });
-        
-        // Create portal session with the found customer ID
-        const session = await stripe.billingPortal.sessions.create({
-          customer: foundCustomerId,
+
+         // Create portal session with the found customer ID
+         const session = await stripe.billingPortal.sessions.create({
+          customer:foundCustomerId,
           return_url: returnUrl
         });
         
@@ -150,6 +146,81 @@ export const createPortalSession = functions.firestore
       });
     } catch (error) {
       await snap.ref.update({ error: { message: error.message } });
+    }
+  });
+
+  // Handle user creation and create a Stripe customer
+  export const createUserInStripe = functions.auth.user().onCreate(async (user) => {
+    const stripe = getStripe();
+    const { email, displayName } = user;
+    const partnerId = user.uid;
+  
+    try {
+      // Create a new customer in Stripe
+      const customer = await stripe.customers.create({
+        email: email || undefined,
+        name: displayName || 'New Partner',
+        metadata: { partnerId } // Store the partnerId in Stripe customer metadata
+      });
+  
+      functions.logger.info(`Created Stripe customer for user ${partnerId} with email ${email}: ${customer.id}`);
+  
+      // Update the partner document with the new Stripe customer ID
+      await db.collection('partners').doc(partnerId).set({
+        email: email || '',
+        name: displayName || 'New Partner',
+        stripeCustomerId: customer.id,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        subscription: 'basic', // Default subscription tier
+        maxLeads: 50, // Default max leads
+        billing: {
+          status: 'inactive',
+          amount: 0,
+          nextBillingDate: null
+        },
+        roles: {
+          partner: true
+        }
+      }, { merge: true });
+  
+      return { customerId: customer.id };
+    } catch (error) {
+      functions.logger.error('Error creating Stripe customer:', error);
+      return { error: 'Failed to create Stripe customer' };
+    }
+  });
+
+  export const createPaymentIntent = functions.https.onCall(async (data, context) => {
+    const stripe = getStripe();
+    const { amount, currency = 'usd', partnerId, paymentMethodId } = data;
+  
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'You must be signed in to create a payment intent.');
+    }
+  
+    if (!amount || !partnerId) {
+      throw new functions.https.HttpsError('invalid-argument', 'The function must be called with a valid amount and partnerId.');
+    }
+  
+    try {
+      // Retrieve the partner document to get the Stripe customer ID
+      const partnerDoc = await db.collection('partners').doc(partnerId).get();
+      const partnerData = partnerDoc.data();
+      const customerId = partnerData?.stripeCustomerId;
+  
+      if (!customerId) {
+        throw new functions.https.HttpsError('not-found', 'Stripe customer ID not found for this partner.');
+      }
+  
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(amount * 100), // Amount in cents
+        currency,
+        customer: customerId,
+        payment_method: paymentMethodId
+      });
+      return { clientSecret: paymentIntent.client_secret, paymentIntentId: paymentIntent.id };
+    } catch (error) {
+      throw new functions.https.HttpsError('unknown', 'Failed to create payment intent: ' + error.message);
     }
   });
 

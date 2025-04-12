@@ -193,7 +193,7 @@ export function PartnerManagement() {
     }
   });
   
-  // Calculate metrics
+  // Stats Cards Data
   const statsCards = [
     {
       title: 'Total Partners',
@@ -225,6 +225,7 @@ export function PartnerManagement() {
     }
   ];
   
+  // Add Partner Success Handler
   const handleAddPartnerSuccess = () => {
     setSuccess("Partner added successfully");
     fetchPartners();
@@ -232,7 +233,7 @@ export function PartnerManagement() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 container mx-auto">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -249,7 +250,7 @@ export function PartnerManagement() {
           Add Partner
         </button>
       </div>
-
+  
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {statsCards.map((stat) => (

@@ -11,6 +11,7 @@ import { NotificationsPage } from './NotificationsPage';
 import { useAuthStore } from '../../store/useAuthStore';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { verifyUserPermissions } from '../../lib/verifyPermissions';
+import { PartnerManagement } from './PartnerManagement';
 import { AlertCircle } from 'lucide-react';
 
 export function AdminDashboard() {
@@ -89,6 +90,7 @@ export function AdminDashboard() {
         <Route path="/partner-leads/:id" element={<LeadStatusViewer />} />
         <Route path="/notifications" element={<NotificationsPage />} />
       </Routes>
+      <PartnerManagement />
     </div>
   );
 }

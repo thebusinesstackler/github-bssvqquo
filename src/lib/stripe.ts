@@ -22,6 +22,30 @@ export const getStripe = () => {
   return stripePromise;
 };
 
+export const createPaymentIntent = async (amount: number, currency: string = 'usd') => {
+  try {
+    const paymentIntentRef = await addDoc(collection(db, 'stripe_payment_intents'), {
+      amount: amount * 100, // Amount in cents
+      currency,
+    });
+    
+    return new Promise<string>((resolve, reject) => {
+      const unsubscribe = onSnapshot(paymentIntentRef, (snap) => {
+        const { client_secret, error } = snap.data() || {};
+        if (error) {
+          unsubscribe();
+          reject(new Error(error.message));
+        } else if (client_secret) {
+          unsubscribe();
+          resolve(client_secret);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Error creating Payment Intent:', error);
+    throw error;
+  }
+}
 export const createSubscription = async (partnerId: string, priceId: string, adminId?: string) => {
   try {
     // Validate parameters

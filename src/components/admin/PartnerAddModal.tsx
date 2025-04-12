@@ -23,7 +23,7 @@ interface PartnerAddModalProps {
 }
 
 // Helper function for implementing retry with exponential backoff
-async function withRetry<T>(
+export async function withRetry<T>(
   fn: () => Promise<T>,
   maxRetries = 3,
   initialDelay = 1000
@@ -55,7 +55,7 @@ async function withRetry<T>(
   throw lastError;
 }
 
-export function PartnerAddModal({ onClose, onSuccess }: PartnerAddModalProps) {
+export const PartnerAddModal: React.FC<PartnerAddModalProps> = ({ onClose, onSuccess }) => {
   const { fetchPartners } = useAdminStore();
   const [formData, setFormData] = useState({
     name: '',
@@ -144,7 +144,7 @@ export function PartnerAddModal({ onClose, onSuccess }: PartnerAddModalProps) {
           <h2 className="text-xl font-semibold text-gray-900">Add New Partner</h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-500"
+            className="text-gray-400 hover:text-gray-500 focus:outline-none"
             aria-label="Close"
           >
             <X className="w-6 h-6" />
@@ -163,7 +163,7 @@ export function PartnerAddModal({ onClose, onSuccess }: PartnerAddModalProps) {
                 type="text"
                 value={formData.name}
                 onChange={handleChange}
-                className="pl-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="pl-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
                 placeholder="John Smith"
                 required
               />
@@ -181,7 +181,7 @@ export function PartnerAddModal({ onClose, onSuccess }: PartnerAddModalProps) {
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
-                className="pl-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="pl-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
                 placeholder="partner@example.com"
                 required
               />
@@ -199,7 +199,7 @@ export function PartnerAddModal({ onClose, onSuccess }: PartnerAddModalProps) {
                 type="text"
                 value={formData.siteName}
                 onChange={handleChange}
-                className="pl-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="pl-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
                 placeholder="Research Center"
                 required
               />
@@ -217,7 +217,7 @@ export function PartnerAddModal({ onClose, onSuccess }: PartnerAddModalProps) {
                 type="text"
                 value={formData.zipCode}
                 onChange={handleChange}
-                className="pl-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="pl-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
                 placeholder="12345"
                 maxLength={5}
               />
@@ -240,7 +240,7 @@ export function PartnerAddModal({ onClose, onSuccess }: PartnerAddModalProps) {
                 max="500"
                 value={formData.serviceRadius}
                 onChange={handleNumberChange}
-                className="pl-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="pl-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
               />
             </div>
             <p className="mt-1 text-xs text-gray-500">
@@ -259,12 +259,12 @@ export function PartnerAddModal({ onClose, onSuccess }: PartnerAddModalProps) {
                 type={showPassword ? "text" : "password"}
                 value={formData.password}
                 onChange={handleChange}
-                className="pl-10 pr-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                className="pl-10 pr-10 w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none"
                 placeholder="••••••••"
                 required
                 minLength={6}
               />
-              <button
+              <button // Added focus:outline-none for accessibility
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"

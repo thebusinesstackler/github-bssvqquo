@@ -1,132 +1,146 @@
 import { create } from 'zustand';
 import { db } from '../lib/firebase';
-import { collection, addDoc, getDocs, query, where, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  doc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+  orderBy,
+  where,
+} from 'firebase/firestore';
+import { Partner } from '../types';
 
-interface Site {
+export interface Site {
   id: string;
   name: string;
-  address: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  phone: string;
-  principalInvestigator: string;
-  studyCoordinator: string;
   status: 'active' | 'inactive';
-  leads: number;
-  responseRate: string;
   createdAt: Date;
 }
 
 interface PartnerStore {
-  sites: Site[];
+  partners: Partner[];
   isLoading: boolean;
   error: string | null;
-  fetchSites: (partnerId: string) => Promise<void>;
-  addSite: (partnerId: string, siteData: Omit<Site, 'id' | 'createdAt' | 'leads' | 'responseRate' | 'status'>) => Promise<void>;
-  updateSite: (partnerId: string, siteId: string, updates: Partial<Site>) => Promise<void>;
-  deleteSite: (partnerId: string, siteId: string) => Promise<void>;
+  fetchPartners: (searchName?: string) => Promise<void>;
+  addPartner: (partnerData: Omit<Partner, 'id' | 'createdAt'>) => Promise<string>;
+  updatePartner: (partnerId: string, updates: Partial<Partner>) => Promise<void>;
+  deletePartner: (partnerId: string) => Promise<void>;
+  searchName: string;
+  setSearchName: (searchName: string) => void;
+  filteredPartners: Partner[];
 }
 
 export const usePartnerStore = create<PartnerStore>((set) => ({
-  sites: [],
+  partners: [],
   isLoading: false,
   error: null,
+  searchName: '',
+  filteredPartners: [],
 
-  fetchSites: async (partnerId: string) => {
+  setSearchName: (searchName) => set({ searchName }),
+
+  fetchPartners: async (searchName = '') => {
     set({ isLoading: true, error: null });
     try {
-      if (!partnerId) {
-        throw new Error('Partner ID is required');
+      let q = query(
+        collection(db, 'partners'),
+        orderBy('name') // Assuming you want to order by name
+      );
+
+      if (searchName) {
+        q = query(
+          collection(db, 'partners'),
+          where('name', '>=', searchName),
+          where('name', '<=', searchName + '\uf8ff'),
+          orderBy('name')
+        );
       }
 
-      const sitesRef = collection(db, `partners/${partnerId}/sites`);
-      const querySnapshot = await getDocs(sitesRef);
-      
-      const sites = querySnapshot.docs.map(doc => ({
+      const querySnapshot = await getDocs(q);
+
+      const partners = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date()
-      })) as Site[];
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+      })) as Partner[];
 
-      set({ sites, isLoading: false, error: null });
-    } catch (error) {
-      console.error('Error fetching sites:', error);
-      set({ error: 'Failed to fetch sites', isLoading: false });
+      set({
+        partners,
+        isLoading: false,
+        error: null,
+        filteredPartners: partners,
+      });
+    } catch (err) {
+      const error = err as Error;
+      set({ isLoading: false, error: error.message, partners: [] });
     }
   },
 
-  addSite: async (partnerId: string, siteData) => {
+  addPartner: async (partnerData) => {
     set({ isLoading: true, error: null });
     try {
-      if (!partnerId) {
-        throw new Error('Partner ID is required');
-      }
+      const docRef = await addDoc(collection(db, 'partners'), {
+        ...partnerData,
+        createdAt: serverTimestamp(),
+      });
 
-      const sitesRef = collection(db, `partners/${partnerId}/sites`);
-      
-      const newSite = {
-        ...siteData,
-        status: 'active' as const,
-        leads: 0,
-        responseRate: '0%',
-        createdAt: serverTimestamp()
+      const newPartner = {
+        id: docRef.id,
+        ...partnerData,
+        createdAt: new Date(),
       };
 
-      const docRef = await addDoc(sitesRef, newSite);
-      
-      set(state => ({
-        sites: [...state.sites, { id: docRef.id, ...newSite, createdAt: new Date() }],
+      set((state) => ({
+        partners: [...state.partners, newPartner],
         isLoading: false,
-        error: null
+        error: null,
       }));
-    } catch (error) {
-      console.error('Error adding site:', error);
-      set({ error: 'Failed to add site', isLoading: false });
+
+      return docRef.id;
+    } catch (err) {
+      const error = err as Error;
+      set({ isLoading: false, error: error.message });
+      return '';
     }
   },
 
-  updateSite: async (partnerId: string, siteId: string, updates) => {
+  updatePartner: async (partnerId, updates) => {
     set({ isLoading: true, error: null });
     try {
-      if (!partnerId || !siteId) {
-        throw new Error('Partner ID and Site ID are required');
-      }
+      const partnerRef = doc(db, 'partners', partnerId);
+      await updateDoc(partnerRef, updates);
 
-      const siteRef = doc(db, `partners/${partnerId}/sites/${siteId}`);
-      await updateDoc(siteRef, updates);
-
-      set(state => ({
-        sites: state.sites.map(site =>
-          site.id === siteId ? { ...site, ...updates } : site
+      set((state) => ({
+        partners: state.partners.map((partner) =>
+          partner.id === partnerId ? { ...partner, ...updates } : partner
         ),
         isLoading: false,
-        error: null
+        error: null,
       }));
-    } catch (error) {
-      console.error('Error updating site:', error);
-      set({ error: 'Failed to update site', isLoading: false });
+    } catch (err) {
+      const error = err as Error;
+      set({ isLoading: false, error: error.message });
     }
   },
 
-  deleteSite: async (partnerId: string, siteId: string) => {
+  deletePartner: async (partnerId) => {
     set({ isLoading: true, error: null });
     try {
-      if (!partnerId || !siteId) {
-        throw new Error('Partner ID and Site ID are required');
-      }
+      const partnerRef = doc(db, 'partners', partnerId);
+      await deleteDoc(partnerRef);
 
-      const siteRef = doc(db, `partners/${partnerId}/sites/${siteId}`);
-      await deleteDoc(siteRef);
-
-      set(state => ({
-        sites: state.sites.filter(site => site.id !== siteId),
+      set((state) => ({
+        partners: state.partners.filter((partner) => partner.id !== partnerId),
         isLoading: false,
-        error: null
+        error: null,
       }));
-    } catch (error) {
-      console.error('Error deleting site:', error);
-      set({ error: 'Failed to delete site', isLoading: false });
+    } catch (err) {
+      const error = err as Error;
+      set({ isLoading: false, error: error.message });
     }
-  }
+  },
 }));
