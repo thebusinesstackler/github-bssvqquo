@@ -1,343 +1,226 @@
-import React, { useState, useEffect } from 'react';
-import { useAdminStore } from '../../store/useAdminStore';
+import React, { useState } from 'react';
+import { X } from 'lucide-react';
 import { useLeadStore } from '../../store/useLeadStore';
-import { AlertCircle, CheckCircle, MapPin } from 'lucide-react';
+import { useAdminStore } from '../../store/useAdminStore';
 
 interface AddPatientFormProps {
   onClose: () => void;
 }
 
-interface Site {
-  id: string;
-  name: string;
-  zipCode: string;
-  radius: number; // in miles
-}
-
-function calculateDistance(zipCode1: string, zipCode2: string): number {
-  // This is a simplified version - in production you'd want to use a proper geocoding service
-  // For now, we'll just compare the first 3 digits of the zip codes
-  // as a rough approximation of geographic proximity
-  const prefix1 = zipCode1.substring(0, 3);
-  const prefix2 = zipCode2.substring(0, 3);
-  
-  // Return a rough estimate - same prefix means very close
-  if (prefix1 === prefix2) return 0;
-  
-  // Different prefixes - calculate a rough distance
-  // This is just for demonstration - real implementation would use actual geocoding
-  return Math.abs(parseInt(prefix1) - parseInt(prefix2)) * 10;
-}
-
 export function AddPatientForm({ onClose }: AddPatientFormProps) {
   const { partners } = useAdminStore();
   const { addLead } = useLeadStore();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [suggestedSite, setSuggestedSite] = useState<Site | null>(null);
-
+  
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
-    age: '',
-    sex: 'male',
     phone: '',
     email: '',
-    zipCode: '',
-    indication: '',
     partnerId: '',
-    status: 'new' as const
+    status: 'new',
+    notes: ''
   });
 
-  // Get all sites with their radius settings
-  const sites = partners.map(partner => ({
-    id: partner.id,
-    name: partner.name,
-    zipCode: partner.siteDetails?.zipCode || '',
-    radius: partner.siteDetails?.radius || 25 // default 25 mile radius
-  }));
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  // When zipcode changes, find the closest site within radius
-  useEffect(() => {
-    if (formData.zipCode.length === 5) {
-      const matchingSites = sites.filter(site => {
-        if (!site.zipCode) return false;
-        const distance = calculateDistance(formData.zipCode, site.zipCode);
-        return distance <= site.radius;
-      });
-
-      // Sort by distance and get the closest
-      if (matchingSites.length > 0) {
-        const closest = matchingSites.sort((a, b) => 
-          calculateDistance(formData.zipCode, a.zipCode) - 
-          calculateDistance(formData.zipCode, b.zipCode)
-        )[0];
-
-        setSuggestedSite(closest);
-        setFormData(prev => ({ ...prev, partnerId: closest.id }));
-      } else {
-        setSuggestedSite(null);
-        setFormData(prev => ({ ...prev, partnerId: '' }));
-      }
-    }
-  }, [formData.zipCode]);
-
-  const validateZipCode = (zipCode: string) => {
-    const zipRegex = /^\d{5}(-\d{4})?$/;
-    return zipRegex.test(zipCode);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     setError(null);
     
-    // Validate zipcode
-    if (!validateZipCode(formData.zipCode)) {
-      setError('Please enter a valid ZIP code');
-      return;
-    }
-
-    // Ensure a site was matched
-    if (!formData.partnerId) {
-      setError('No matching site found for this ZIP code');
-      return;
-    }
-
-    setIsLoading(true);
-
     try {
+      // Validate form
+      if (!formData.firstName || !formData.lastName || !formData.phone) {
+        throw new Error('First name, last name and phone number are required');
+      }
+      
+      // Add the lead
       await addLead({
         ...formData,
-        age: parseInt(formData.age, 10),
-        createdAt: new Date(),
-        lastUpdated: new Date()
+        createdAt: new Date()
       });
+      
       setSuccess(true);
+      
+      // Close modal after 1.5 seconds
       setTimeout(() => {
         onClose();
       }, 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add patient');
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="bg-white rounded-lg p-6">
-      <h2 className="text-lg font-medium text-gray-900 mb-6">Add New Patient</h2>
+    <div className="bg-white rounded-lg shadow-xl overflow-hidden max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between bg-gray-50 px-6 py-4 border-b">
+        <h2 className="text-xl font-semibold text-gray-800">Add New Patient</h2>
+        <button 
+          onClick={onClose}
+          className="text-gray-500 hover:text-gray-700 focus:outline-none"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
       
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              First Name
-            </label>
-            <input
-              type="text"
-              name="firstName"
-              required
-              value={formData.firstName}
-              onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
+      <div className="p-6">
+        {success ? (
+          <div className="text-center py-8">
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
+              <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+              </svg>
+            </div>
+            <h3 className="mt-3 text-lg font-medium text-gray-900">Patient added successfully!</h3>
+            <p className="mt-2 text-sm text-gray-500">The new patient has been added to the system.</p>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Last Name
-            </label>
-            <input
-              type="text"
-              name="lastName"
-              required
-              value={formData.lastName}
-              onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Age
-            </label>
-            <input
-              type="number"
-              name="age"
-              required
-              min="18"
-              max="120"
-              value={formData.age}
-              onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Sex
-            </label>
-            <select
-              name="sex"
-              value={formData.sex}
-              onChange={(e) => setFormData({ ...formData, sex: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            >
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Phone
-            </label>
-            <input
-              type="tel"
-              name="phone"
-              required
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              ZIP Code
-            </label>
-            <input
-              type="text"
-              name="zipCode"
-              required
-              value={formData.zipCode}
-              onChange={(e) => setFormData({ ...formData, zipCode: e.target.value })}
-              placeholder="12345"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Indication
-            </label>
-            <input
-              type="text"
-              name="indication"
-              required
-              value={formData.indication}
-              onChange={(e) => setFormData({ ...formData, indication: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              placeholder="e.g., Type 2 Diabetes"
-            />
-          </div>
-        </div>
-
-        {/* Site Assignment Section */}
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-          <h3 className="text-sm font-medium text-gray-900 mb-4">Site Assignment</h3>
-          
-          {formData.zipCode.length === 5 ? (
-            suggestedSite ? (
-              <div className="flex items-start space-x-3">
-                <MapPin className="w-5 h-5 text-green-500 mt-1" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    Suggested Site: {suggestedSite.name}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    This site is within {suggestedSite.radius} miles of the patient's location
-                  </p>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {error && (
+              <div className="bg-red-50 border-l-4 border-red-500 p-4">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm text-red-700">{error}</p>
+                  </div>
                 </div>
               </div>
-            ) : (
-              <div className="flex items-start space-x-3">
-                <AlertCircle className="w-5 h-5 text-yellow-500 mt-1" />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    No sites found within range
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Consider manually assigning to the nearest site
-                  </p>
-                </div>
+            )}
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">First Name *</label>
+                <input
+                  type="text"
+                  id="firstName"
+                  name="firstName"
+                  value={formData.firstName}
+                  onChange={handleChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  required
+                />
               </div>
-            )
-          ) : (
-            <p className="text-sm text-gray-500">
-              Enter a ZIP code to see suggested sites
-            </p>
-          )}
-
-          {/* Manual Site Selection */}
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700">
-              Assign to Site
-            </label>
-            <select
-              value={formData.partnerId}
-              onChange={(e) => setFormData({ ...formData, partnerId: e.target.value })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              required
-            >
-              <option value="">Select a site...</option>
-              {sites.map(site => (
-                <option key={site.id} value={site.id}>
-                  {site.name} {site === suggestedSite ? '(Suggested)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {error && (
-          <div className="bg-red-50 text-red-700 p-3 rounded-md flex items-center">
-            <AlertCircle className="w-5 h-5 mr-2" />
-            {error}
-          </div>
+              
+              <div>
+                <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">Last Name *</label>
+                <input
+                  type="text"
+                  id="lastName"
+                  name="lastName"
+                  value={formData.lastName}
+                  onChange={handleChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">Phone Number *</label>
+                <input
+                  type="tel"
+                  id="phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+                <input
+                  type="email"
+                  id="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="partnerId" className="block text-sm font-medium text-gray-700">Assign to Site</label>
+                <select
+                  id="partnerId"
+                  name="partnerId"
+                  value={formData.partnerId}
+                  onChange={handleChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                >
+                  <option value="">Select a site</option>
+                  {partners.map(partner => (
+                    <option key={partner.id} value={partner.id}>{partner.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label htmlFor="status" className="block text-sm font-medium text-gray-700">Status</label>
+                <select
+                  id="status"
+                  name="status"
+                  value={formData.status}
+                  onChange={handleChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                >
+                  <option value="new">New</option>
+                  <option value="not_contacted">Not Contacted</option>
+                  <option value="contacted">Contacted</option>
+                  <option value="qualified">Qualified</option>
+                  <option value="converted">Converted</option>
+                  <option value="disqualified">Disqualified</option>
+                </select>
+              </div>
+            </div>
+            
+            <div>
+              <label htmlFor="notes" className="block text-sm font-medium text-gray-700">Notes</label>
+              <textarea
+                id="notes"
+                name="notes"
+                rows={4}
+                value={formData.notes}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              ></textarea>
+            </div>
+            
+            <div className="flex justify-end space-x-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? 'Adding...' : 'Add Patient'}
+              </button>
+            </div>
+          </form>
         )}
-
-        {success && (
-          <div className="bg-green-50 text-green-700 p-3 rounded-md flex items-center">
-            <CheckCircle className="w-5 h-5 mr-2" />
-            Patient added successfully!
-          </div>
-        )}
-
-        <div className="flex justify-end space-x-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          
-          <button
-            type="submit"
-            disabled={isLoading || !formData.partnerId}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
-          >
-            {isLoading ? 'Adding...' : 'Add Patient'}
-          </button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 }

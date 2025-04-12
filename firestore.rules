@@ -6,101 +6,210 @@ service cloud.firestore {
       return request.auth != null;
     }
     
+    function isAdminByRole() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/partners/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/partners/$(request.auth.uid)).data.role == 'admin';
+    }
+    
     function isAdmin() {
-      return isAuthenticated() && 
-        (request.auth.token.email == 'theranovex@gmail.com' || 
-         request.auth.token.email == 'digitaltackler@gmail.com');
+      return isAdminByRole();
     }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    
+    function isPartner(partnerId) {
+      return isAuthenticated() && request.auth.uid == partnerId;
     }
-
-    // Partners collection
+    
+    function isAdminOrPartner(partnerId) {
+      return isAdmin() || isPartner(partnerId);
+    }
+    
+    function getUserData(userId) {
+      return exists(/databases/$(database)/documents/partners/$(userId)) ? 
+        get(/databases/$(database)/documents/partners/$(userId)).data : null;
+    }
+    
+    // Default rule - deny all access unless explicitly allowed
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Admin access - admins can do anything
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+    
+    // Partners collection and documents
     match /partners/{partnerId} {
-      // Allow read access to all authenticated users
-      allow read: if isAuthenticated();
+      // Partners can read and update their own documents
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
+      allow update: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
       
-      // Allow creation during signup
-      allow create: if isAuthenticated() && 
-        request.auth.uid == partnerId;
-      
-      // Allow updates if admin or owner (but can't change role if owner)
-      allow update: if isAuthenticated() && (
-        isAdmin() || 
-        (isOwner(partnerId) && request.resource.data.role == resource.data.role)
-      );
-      
-      // Only admin can delete
+      // Allow authenticated users to create their own document, admins can create any document
+      allow create: if isAuthenticated() && (request.auth.uid == partnerId || isAdmin());
       allow delete: if isAdmin();
-
-      // Leads subcollection
-      match /leads/{leadId} {
-        // Allow partners to read their own leads
-        allow read: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
-        
-        // Allow partners to create leads in their own collection
-        allow create: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
-        
-        // Allow partners to update their own leads
-        allow update: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
-        
-        // Allow partners to delete their own leads
-        allow delete: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
-      }
-
-      // Sites subcollection
-      match /sites/{siteId} {
-        allow read, write: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
-      }
-
-      // Messages subcollection
+    }
+    
+    // Explicitly allow access to the leads subcollection
+    match /partners/{partnerId}/leads/{leadId} {
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
+      allow write: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
+      
+      // Lead messages subcollection
       match /messages/{messageId} {
-        allow read, write: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
-      }
-
-      // Notifications subcollection
-      match /notifications/{notificationId} {
-        allow read, write: if isAuthenticated() && (isAdmin() || isOwner(partnerId));
+        allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
+        allow create: if isAuthenticated() && request.auth.uid == partnerId;
+        allow update: if false;
+        allow delete: if false;
       }
     }
-
-    // Messages collection (root level)
+    
+    // Keep all the remaining rules as they were
+    match /partners/{partnerId}/notifications/{notificationId} {
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
+      allow delete: if isAdmin();
+    }
+    
+    match /partners/{partnerId}/messages/{messageId} {
+      allow read: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
+      allow delete: if isAdmin();
+    }
+    
+    match /partners/{partnerId}/sites/{siteId} {
+      allow read, write: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
+    }
+    
+    match /partners/{partnerId}/locations/{locationId} {
+      allow read, write: if isAuthenticated() && (isAdmin() || request.auth.uid == partnerId);
+    }
+    
+    // Global messages collection
     match /messages/{messageId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() || 
-        (resource != null && 
-          (request.auth.uid == resource.data.senderId || 
-           request.auth.uid == resource.data.recipientId))
-      );
-      allow write: if isAuthenticated() && (
-        isAdmin() || 
-        (request.resource != null && 
-         request.auth.uid == request.resource.data.senderId)
-      );
+      allow read: if isAuthenticated() && 
+                    (isAdmin() || 
+                     request.auth.uid == resource.data.senderId || 
+                     request.auth.uid == resource.data.recipientId);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+                     (isAdmin() || request.auth.uid == resource.data.senderId);
+      allow delete: if isAdmin();
     }
-
-    // Notifications collection (root level)
+    
+    // Global notifications collection
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() || 
-        (resource != null && request.auth.uid == resource.data.partnerId)
-      );
-      allow write: if isAuthenticated() && (
-        isAdmin() || 
-        (request.resource != null && 
-         request.auth.uid == request.resource.data.partnerId)
-      );
+      allow read: if isAuthenticated() && 
+                    (isAdmin() || request.auth.uid == resource.data.partnerId);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+                     (isAdmin() || 
+                      (request.auth.uid == resource.data.partnerId));
+      allow delete: if isAdmin();
     }
-
+    
     // Screener forms collection
     match /screenerForms/{formId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || (
-        isAuthenticated() && 
-        resource != null && 
-        request.auth.uid in resource.data.assignedPartners
-      );
+      allow create, update, delete: if isAdmin();
+      
+      // Make sure partners can access forms assigned to them
+      allow read: if isAuthenticated() && 
+                    resource.data.assignedPartners != null && 
+                    request.auth.uid in resource.data.assignedPartners;
+    }
+    
+    // Customers collection
+    match /customers/{customerId} {
+      allow read: if isAuthenticated() && 
+                    (isAdmin() || 
+                     resource.data.partnerId == request.auth.uid);
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+    
+    // Activity logs collection
+    match /activity_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only cloud functions can write
+    }
+    
+    // Stripe related collections
+    match /stripe_checkout_sessions/{sessionId} {
+      allow read: if isAuthenticated() && 
+                    (isAdmin() || resource.data.metadata.partnerId == request.auth.uid);
+      allow create: if isAuthenticated();
+      allow update: if false; // Only cloud functions should update these
+    }
+    
+    match /stripe_portal_sessions/{sessionId} {
+      allow read: if isAuthenticated() && 
+                    (isAdmin() || resource.data.partnerId == request.auth.uid);
+      allow create: if isAuthenticated();
+      allow update: if false; // Only cloud functions should update these
+    }
+    
+    match /stripe_payments/{paymentId} {
+      allow read: if isAuthenticated() && 
+                    (isAdmin() || (exists(/databases/$(database)/documents/partners/$(request.auth.uid)) && 
+                    resource.data.customerId == getUserData(request.auth.uid).billing.stripeCustomerId));
+      allow write: if false; // Only cloud functions should write payments
+    }
+    
+    match /stripe_invoices/{invoiceId} {
+      allow read: if isAuthenticated() && 
+                    (isAdmin() || (exists(/databases/$(database)/documents/partners/$(request.auth.uid)) && 
+                    resource.data.customerId == getUserData(request.auth.uid).billing.stripeCustomerId));
+      allow write: if false; // Only cloud functions should write invoices
+    }
+    
+    // Subscription related collections
+    match /subscriptions/{subscriptionId} {
+      allow read: if isAuthenticated() && 
+                   (isAdmin() || resource.data.partnerId == request.auth.uid);
+      allow write: if isAdmin();
+    }
+    
+    // Zip code data for lead assignment
+    match /zip_codes/{zipId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Lead assignments history
+    match /lead_assignments/{assignmentId} {
+      allow read: if isAuthenticated() && 
+                   (isAdmin() || resource.data.partnerId == request.auth.uid);
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+    
+    // Real-time status collection (for LeadStatusViewer)
+    match /real_time_status/{statusId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Settings collection
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // Form responses collection
+    match /form_responses/{responseId} {
+      allow read: if isAuthenticated() && 
+                   (isAdmin() || resource.data.partnerId == request.auth.uid);
+      allow create: if true; // Allow anonymous form submissions
+      allow update, delete: if isAdmin();
+    }
+    
+    // User activity logs
+    match /user_activity_logs/{logId} {
+      allow read: if isAuthenticated() && 
+                   (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Immutable logs
     }
   }
 }

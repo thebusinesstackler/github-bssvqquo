@@ -11,8 +11,11 @@ import {
   Filter,
   ChevronDown,
   ChevronUp,
-  Bell
+  Bell,
+  RefreshCw
 } from 'lucide-react';
+import { collection, addDoc, serverTimestamp, query, orderBy, getDocs } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { format } from 'date-fns';
 
 export function MessageOversight() {
@@ -24,6 +27,8 @@ export function MessageOversight() {
   const [showFilters, setShowFilters] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<any[]>([]);
 
   const [messageForm, setMessageForm] = useState({
     title: '',
@@ -59,6 +64,30 @@ export function MessageOversight() {
     ]
   };
 
+  // Fetch previous messages
+  useEffect(() => {
+    const fetchMessages = async () => {
+      try {
+        // Get messages from the global messages collection
+        const messagesRef = collection(db, 'messages');
+        const q = query(messagesRef, orderBy('timestamp', 'desc'));
+        const querySnapshot = await getDocs(q);
+        
+        const messagesList = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          timestamp: doc.data().timestamp?.toDate() || new Date()
+        }));
+        
+        setMessages(messagesList);
+      } catch (err) {
+        console.error('Error fetching messages:', err);
+      }
+    };
+    
+    fetchMessages();
+  }, []);
+
   const handleTemplateSelect = (templateName: string) => {
     const template = templates[messageType].find(t => t.name === templateName);
     if (template) {
@@ -78,28 +107,61 @@ export function MessageOversight() {
   const handleSendMessage = async () => {
     setError(null);
     setSuccess(null);
+    setIsLoading(true);
 
     if (!messageForm.title || !messageForm.message) {
       setError('Please provide both title and message');
+      setIsLoading(false);
       return;
     }
 
     if (selectedPartners.length === 0) {
       setError('Please select at least one partner');
+      setIsLoading(false);
       return;
     }
 
     try {
       // Send notification to each selected partner
       await Promise.all(
-        selectedPartners.map(partnerId =>
-          sendNotification(
+        selectedPartners.map(async (partnerId) => {
+          // Create notification entry
+          const notificationId = await sendNotification(
             partnerId,
             messageForm.title,
             messageForm.message,
             'admin'
-          )
-        )
+          );
+          
+          // Create a message entry in Firebase
+          const messageData = {
+            content: messageForm.message,
+            title: messageForm.title,
+            senderId: 'admin',
+            recipientId: partnerId,
+            timestamp: serverTimestamp(),
+            read: false,
+            type: messageType,
+            notificationId: notificationId
+          };
+          
+          // Also create a message in the partner's messages collection
+          await addDoc(collection(db, `partners/${partnerId}/messages`), messageData);
+          
+          // Add to global messages collection for admin reference
+          await addDoc(collection(db, 'messages'), messageData);
+          
+          // Find the partner to get their name
+          const partner = partners.find(p => p.id === partnerId);
+          
+          // Update local messages state for immediate UI feedback
+          setMessages(prev => [{
+            id: Date.now().toString(),
+            ...messageData,
+            timestamp: new Date(),
+            recipientName: partner?.name || 'Unknown Partner'
+          }, ...prev]);
+        })
       );
 
       setSuccess(`Message sent successfully to ${selectedPartners.length} partner(s)`);
@@ -110,7 +172,10 @@ export function MessageOversight() {
         template: ''
       });
     } catch (err) {
+      console.error('Error sending messages:', err);
       setError('Failed to send message');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -281,6 +346,36 @@ export function MessageOversight() {
         </div>
       </div>
 
+      {/* Recent Messages */}
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <h2 className="text-lg font-medium text-gray-900 mb-4">Recent Messages</h2>
+        
+        {messages.length > 0 ? (
+          <div className="divide-y divide-gray-200">
+            {messages.slice(0, 5).map((message) => (
+              <div key={message.id} className="py-3">
+                <div className="flex justify-between">
+                  <div className="font-medium">{message.title}</div>
+                  <div className="text-sm text-gray-500">
+                    {message.timestamp instanceof Date ? 
+                      format(message.timestamp, 'MMM d, yyyy h:mm a') : 
+                      'Just now'}
+                  </div>
+                </div>
+                <div className="text-sm text-gray-600 mt-1">{message.content}</div>
+                <div className="text-xs text-gray-500 mt-2">
+                  To: {message.recipientName || partners.find(p => p.id === message.recipientId)?.name || 'Unknown Partner'}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center text-gray-500 py-4">
+            No recent messages found
+          </div>
+        )}
+      </div>
+
       {/* Status Messages */}
       {error && (
         <div className="bg-red-50 text-red-700 p-4 rounded-lg flex items-center">
@@ -300,11 +395,20 @@ export function MessageOversight() {
       <div className="flex justify-end">
         <button
           onClick={handleSendMessage}
-          disabled={selectedPartners.length === 0 || !messageForm.title || !messageForm.message}
+          disabled={isLoading || selectedPartners.length === 0 || !messageForm.title || !messageForm.message}
           className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
         >
-          <Send className="w-5 h-5 mr-2" />
-          Send Message
+          {isLoading ? (
+            <>
+              <RefreshCw className="w-5 h-5 mr-2 animate-spin" /> 
+              Sending...
+            </>
+          ) : (
+            <>
+              <Send className="w-5 h-5 mr-2" />
+              Send Message
+            </>
+          )}
         </button>
       </div>
     </div>

@@ -16,17 +16,19 @@ import {
   Line,
   ResponsiveContainer
 } from 'recharts';
-import { Clock, Users, PhoneCall, CheckCircle2 } from 'lucide-react';
+import { Clock, Users, PhoneCall, CheckCircle2, BellRing } from 'lucide-react';
+import { NewLeadButton } from './NewLeadButton';
 
 export function LeadDashboard() {
-  const user = useAuthStore((state) => state.user);
+  const { user, impersonatedUser } = useAuthStore();
+  const effectiveUser = impersonatedUser || user;
   const { leads, fetchLeads, isLoading, error } = useLeadStore();
 
   useEffect(() => {
-    if (user?.id) {
-      fetchLeads(user.id);
+    if (effectiveUser?.id) {
+      fetchLeads(effectiveUser.id);
     }
-  }, [user?.id]);
+  }, [effectiveUser?.id, fetchLeads]);
 
   if (isLoading) {
     return (
@@ -68,13 +70,24 @@ export function LeadDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Welcome Banner */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Welcome back, {user?.name}
-          </p>
+        <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg shadow-lg p-8 text-white flex-1 mr-4">
+          <div className="flex items-center space-x-4">
+            <div className="p-3 bg-white/20 rounded-full">
+              <BellRing className="w-8 h-8" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold">
+                Welcome back, {effectiveUser?.name?.split(' ')[0]}! 👋
+              </h1>
+              <p className="mt-2 text-blue-100">
+                Here's what's happening with your clinical trials today
+              </p>
+            </div>
+          </div>
         </div>
+        <NewLeadButton variant="primary" size="large" />
       </div>
 
       {/* Stats Cards */}
@@ -127,57 +140,64 @@ export function LeadDashboard() {
 
       {/* Recent Leads */}
       <div className="bg-white rounded-lg shadow-sm">
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-gray-900">Recent Leads</h2>
+          <NewLeadButton variant="secondary" size="small" />
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Patient
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Contact
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Indication
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {leads.slice(0, 5).map((lead) => (
-                <tr key={lead.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {lead.firstName} {lead.lastName}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">{lead.phone}</div>
-                    <div className="text-sm text-gray-500">{lead.email}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {lead.indication}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      lead.status === 'new' ? 'bg-blue-100 text-blue-800' :
-                      lead.status === 'contacted' ? 'bg-green-100 text-green-800' :
-                      lead.status === 'randomized' ? 'bg-purple-100 text-purple-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
-                    </span>
-                  </td>
+        {leads.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Patient
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Contact
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Indication
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {leads.slice(0, 5).map((lead) => (
+                  <tr key={lead.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">
+                        {lead.firstName} {lead.lastName}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-500">{lead.phone}</div>
+                      <div className="text-sm text-gray-500">{lead.email}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {lead.indication}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        lead.status === 'new' ? 'bg-blue-100 text-blue-800' :
+                        lead.status === 'contacted' ? 'bg-green-100 text-green-800' :
+                        lead.status === 'randomized' ? 'bg-purple-100 text-purple-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {lead.status.charAt(0).toUpperCase() + lead.status.slice(1).replace(/_/g, ' ')}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="p-6 text-center text-gray-500">
+            No leads found. New leads will appear here.
+          </div>
+        )}
       </div>
 
       {/* Charts Grid */}
@@ -185,25 +205,31 @@ export function LeadDashboard() {
         {/* Status Distribution */}
         <div className="bg-white p-6 rounded-lg shadow-sm">
           <h2 className="text-lg font-semibold mb-4">Lead Status Distribution</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={statusData}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={100}
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-              >
-                {statusData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
+          {totalLeads > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={statusData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                >
+                  {statusData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[300px] flex items-center justify-center text-gray-500">
+              No data available
+            </div>
+          )}
         </div>
 
         {/* Daily Activity */}

@@ -1,31 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useLeadStore } from '../store/useLeadStore';
 import { useAuthStore } from '../store/useAuthStore';
-import { Search, Download, Plus, ChevronDown, ChevronUp, LayoutGrid, LayoutList, Filter, Star, Edit, Trash2 } from 'lucide-react';
-import { DndContext, DragEndEvent, closestCenter, DragStartEvent, DragOverlay } from '@dnd-kit/core';
+import { Search, ChevronDown, ChevronUp, LayoutGrid, LayoutList, Filter } from 'lucide-react';
+import { DndContext, DragEndEvent, closestCenter, DragStartEvent, DragOverlay, DragCancelEvent, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { LeadCard } from './LeadCard';
 import { LeadColumn } from './LeadColumn';
-import { AddLeadModal } from './AddLeadModal';
 import { LeadStatistics } from './LeadStatistics';
 import { format } from 'date-fns';
-
-function formatPhoneNumber(phone: string) {
-  const cleaned = phone.replace(/\D/g, '');
-  const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
-  if (match) {
-    return '(' + match[1] + ') ' + match[2] + '-' + match[3];
-  }
-  return phone;
-}
+import { NewLeadButton } from './NewLeadButton';
+import { Lead, LeadStatus } from '../types';
 
 export function MyLeadsPage() {
   const { user, impersonatedUser } = useAuthStore();
-  const { leads, isLoading, error, fetchLeads, updateLeadStatus, updateLeadNotes } = useLeadStore();
-  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const { leads, isLoading, error, fetchLeads, updateLeadStatus, updateLeadNotes, setLeads } = useLeadStore();
+  const [viewMode, setViewMode] = useState<'list' | 'kanban'>('kanban');
   const [searchTerm, setSearchTerm] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [activeId, setActiveId] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     study: '',
     protocol: '',
@@ -36,6 +26,8 @@ export function MyLeadsPage() {
     key: string;
     direction: 'asc' | 'desc';
   }>({ key: 'createdAt', direction: 'desc' });
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeLead, setActiveLead] = useState<Lead | null>(null);
 
   const effectiveUser = impersonatedUser || user;
 
@@ -43,7 +35,7 @@ export function MyLeadsPage() {
     if (effectiveUser?.id) {
       fetchLeads(effectiveUser.id);
     }
-  }, [effectiveUser?.id]);
+  }, [effectiveUser?.id, fetchLeads]);
 
   // Get unique values for filters
   const studies = Array.from(new Set(leads.map(lead => lead.indication).filter(Boolean)));
@@ -85,37 +77,82 @@ export function MyLeadsPage() {
     }));
   };
 
+  // DnD handlers
   const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
+    const { active } = event;
+    setActiveId(active.id as string);
+    const draggedLead = filteredLeads.find(lead => lead.id === active.id);
+    if (draggedLead) {
+      setActiveLead(draggedLead);
+    }
+  };
+
+  const handleDragCancel = () => {
+    setActiveId(null);
+    setActiveLead(null);
   };
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    
     setActiveId(null);
-
-    if (!over) return;
-
-    let newStatus: string | null = null;
-    console.log("over:", over);
-
-    newStatus = over.data.current?.status;
-    console.log('Dropped on column:', newStatus);
-
-    if (newStatus) {
+    setActiveLead(null);
+    
+    if (over && active.id !== over.id) {
       const leadId = active.id as string;
+      const newStatus = over.id as string;
+      
       try {
+        // Find the lead to get its current status for optimistic UI update
+        const leadToUpdate = leads.find(l => l.id === leadId);
+        if (!leadToUpdate) return;
+
+        // Optimistically update the lead in state first for a smooth UI transition
+        const updatedLeads = leads.map(lead => 
+          lead.id === leadId 
+            ? { ...lead, status: newStatus as LeadStatus, lastUpdated: new Date() }
+            : lead
+        );
+        
+        // Update the local state
+        setLeads(updatedLeads);
+
+        // Then perform the actual API call
         await updateLeadStatus(leadId, newStatus as any);
       } catch (error) {
         console.error('Error updating lead status:', error);
+        // If there's an error, revert back to the original state
+        await fetchLeads(effectiveUser?.id || '');
       }
     }
   };
 
   const handleAddNote = async (leadId: string, note: string) => {
     try {
-      await updateLeadNotes(leadId, note);
+      // Find the lead to get its current notes
+      const leadToUpdate = leads.find(l => l.id === leadId);
+      if (!leadToUpdate) return;
+
+      // Optimistically update the lead in state
+      const updatedLeads = leads.map(lead => 
+        lead.id === leadId 
+          ? { 
+              ...lead, 
+              notes: lead.notes ? `${lead.notes}\n\n${note}` : note,
+              lastUpdated: new Date() 
+            }
+          : lead
+      );
+      
+      // Update the local state
+      setLeads(updatedLeads);
+
+      // Then perform the actual API call
+      await updateLeadNotes(leadId, leadToUpdate.notes ? `${leadToUpdate.notes}\n\n${note}` : note);
     } catch (error) {
       console.error('Error adding note:', error);
+      // If there's an error, revert back to the original state
+      await fetchLeads(effectiveUser?.id || '');
     }
   };
 
@@ -159,15 +196,62 @@ export function MyLeadsPage() {
               <><LayoutList className="w-5 h-5 mr-2" /> List View</>
             )}
           </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            Add Lead
-          </button>
+          <NewLeadButton />
         </div>
       </div>
+
+      {/* Display the kanban board first */}
+      {viewMode === 'kanban' && (
+        <DndContext 
+          collisionDetection={pointerWithin}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={handleDragCancel}
+          measuring={{
+            droppable: {
+              strategy: MeasuringStrategy.Always
+            }
+          }}
+        >
+          <div className="flex space-x-4 overflow-x-auto pb-4">
+            {statusColumns.map(({ status, title }) => {
+              const columnLeads = filteredLeads.filter(lead => lead.status === status);
+              return (
+                <LeadColumn
+                  key={status}
+                  status={status}
+                  title={title}
+                  count={columnLeads.length}
+                >
+                  <SortableContext
+                    items={columnLeads.map(lead => lead.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {columnLeads.map((lead) => (
+                      <LeadCard
+                        key={lead.id}
+                        lead={lead}
+                        onAddNote={handleAddNote}
+                      />
+                    ))}
+                  </SortableContext>
+                </LeadColumn>
+              );
+            })}
+            
+            <DragOverlay>
+              {activeId && activeLead ? (
+                <div className="opacity-95 transform shadow-xl">
+                  <LeadCard 
+                    lead={activeLead} 
+                    onAddNote={handleAddNote}
+                  />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </div>
+        </DndContext>
+      )}
 
       <LeadStatistics leads={leads} />
 
@@ -243,8 +327,8 @@ export function MyLeadsPage() {
         )}
       </div>
 
-      {/* List/Kanban Views */}
-      {viewMode === 'list' ? (
+      {/* List View */}
+      {viewMode === 'list' && (
         <div className="bg-white shadow-sm rounded-lg overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -288,24 +372,19 @@ export function MyLeadsPage() {
                     )}
                   </button>
                 </th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredLeads.map((lead) => (
                 <tr key={lead.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="text-sm font-medium text-gray-900">
-                        {lead.firstName} {lead.lastName}
-                      </div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {lead.firstName} {lead.lastName}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">
-                      <div>{formatPhoneNumber(lead.phone)}</div>
+                      <div>{lead.phone}</div>
                       <div>{lead.email}</div>
                     </div>
                   </td>
@@ -327,71 +406,11 @@ export function MyLeadsPage() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {format(lead.createdAt, 'MMM d, yyyy')}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <div className="flex justify-end space-x-2">
-                      <button
-                        onClick={() => handleAddNote(lead.id, '')}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        <Edit className="w-5 h-5" />
-                      </button>
-                      <button className="text-red-600 hover:text-red-900">
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      ) : (
-        <DndContext 
-          collisionDetection={closestCenter} 
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex space-x-4 overflow-x-auto pb-4">
-            {statusColumns.map(({ status, title }) => {
-              const columnLeads = filteredLeads.filter(lead => lead.status === status);
-              return (
-                <LeadColumn
-                  key={status}
-                  status={status}
-                  title={title}
-                  count={columnLeads.length}
-                  data-status={status}
-                >
-                  <SortableContext
-                    items={columnLeads.map(lead => lead.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {columnLeads.map((lead) => (
-                      <LeadCard
-                        key={lead.id}
-                        lead={lead}
-                        onAddNote={handleAddNote}
-                      />
-                    ))}
-                  </SortableContext>
-                </LeadColumn>
-              );
-            })}
-          </div>
-
-          <DragOverlay>
-            {activeId ? (
-              <LeadCard
-                lead={leads.find(l => l.id === activeId)!}
-                onAddNote={handleAddNote}
-              />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      )}
-
-      {showAddModal && (
-        <AddLeadModal onClose={() => setShowAddModal(false)} />
       )}
     </div>
   );

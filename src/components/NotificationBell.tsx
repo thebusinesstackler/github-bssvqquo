@@ -12,11 +12,11 @@ export function NotificationBell() {
 
   useEffect(() => {
     if (effectiveUser?.id) {
-      // Subscribe to real-time notifications
+      // Subscribe to real-time notifications for the effective user (the one we're viewing as)
       const unsubscribe = subscribeToNotifications(effectiveUser.id);
       return () => unsubscribe();
     }
-  }, [effectiveUser?.id]);
+  }, [effectiveUser?.id, subscribeToNotifications]);
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
@@ -95,6 +95,21 @@ export function NotificationBell() {
               </div>
             )}
           </div>
+          {notifications.length > 0 && (
+            <div className="p-2 border-t border-gray-100 text-center">
+              <button 
+                className="text-sm text-blue-600 hover:text-blue-800"
+                onClick={() => {
+                  // Mark all notifications as read
+                  notifications.filter(n => !n.read).forEach(n => {
+                    handleMarkAsRead(n.id);
+                  });
+                }}
+              >
+                Mark all as read
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

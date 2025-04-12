@@ -1,72 +1,78 @@
 import { adminAuth, adminDb } from '../lib/firebase-admin';
+import * as dotenv from 'dotenv';
 
-const partners = [
-  {
-    name: 'Sarah Thompson',
-    email: 'sarah.thompson@carolinaresearch.com',
-    siteName: 'Carolina Research Institute',
-    address: '789 Medical Center Blvd',
-    city: 'Raleigh',
-    state: 'NC',
-    metrics: {
-      responseRate: 88,
-      averageResponseTime: 22,
-      totalLeads: 78,
-      contactedLeads: 69
-    }
-  },
-  {
-    name: 'Michael Chen',
-    email: 'mchen@advancedtrials.com',
-    siteName: 'Advanced Clinical Trials',
-    address: '456 Innovation Way',
-    city: 'Durham',
-    state: 'NC',
-    metrics: {
-      responseRate: 95,
-      averageResponseTime: 12,
-      totalLeads: 120,
-      contactedLeads: 114
-    }
-  },
-  {
-    name: 'Emily Rodriguez',
-    email: 'emily.r@piedmontresearch.com',
-    siteName: 'Piedmont Research Center',
-    address: '234 Healthcare Drive',
-    city: 'Winston-Salem',
-    state: 'NC',
-    metrics: {
-      responseRate: 82,
-      averageResponseTime: 28,
-      totalLeads: 65,
-      contactedLeads: 53
-    }
-  }
-];
+// Load environment variables
+dotenv.config();
 
-async function createPartners() {
+async function createMultiplePartners() {
   try {
-    for (const partner of partners) {
-      // Create user in Firebase Auth
+    // Sample partner data
+    const partners = [
+      {
+        email: 'partner1@example.com',
+        password: 'Partner123!',
+        name: 'Research Center A',
+        city: 'Charlotte',
+        state: 'NC',
+        specialties: ['Cardiology', 'Diabetes']
+      },
+      {
+        email: 'partner2@example.com',
+        password: 'Partner123!',
+        name: 'Medical Research Group',
+        city: 'Raleigh',
+        state: 'NC',
+        specialties: ['Oncology', 'Neurology']
+      },
+      {
+        email: 'partner3@example.com',
+        password: 'Partner123!',
+        name: 'Clinical Studies Institute',
+        city: 'Durham',
+        state: 'NC',
+        specialties: ['Pulmonology', 'Infectious Disease']
+      },
+      {
+        email: 'partner4@example.com',
+        password: 'Partner123!',
+        name: 'Health Research Associates',
+        city: 'Greensboro',
+        state: 'NC',
+        specialties: ['Endocrinology', 'Rheumatology']
+      },
+      {
+        email: 'partner5@example.com',
+        password: 'Partner123!',
+        name: 'Advanced Clinical Trials',
+        city: 'Winston-Salem',
+        state: 'NC',
+        specialties: ['Dermatology', 'Gastroenterology']
+      }
+    ];
+
+    // Create each partner
+    for (const [index, partner] of partners.entries()) {
+      // Create the user in Firebase Auth
+      console.log(`Creating partner ${index + 1}/${partners.length}: ${partner.name}`);
+      
       const userRecord = await adminAuth.createUser({
         email: partner.email,
-        password: 'Partner123!',
+        password: partner.password,
         displayName: partner.name,
         emailVerified: true
       });
 
-      // Create partner document
+      // Create the partner document in Firestore
       const partnerData = {
         name: partner.name,
         email: partner.email,
-        siteName: partner.siteName,
+        siteName: partner.name,
         role: 'partner',
         active: true,
         createdAt: new Date(),
-        subscription: 'professional',
-        maxLeads: 200,
-        currentLeads: partner.metrics.totalLeads,
+        subscription: index === 0 ? 'professional' : 'basic',
+        maxLeads: index === 0 ? 100 : 50,
+        currentLeads: Math.floor(Math.random() * (index === 0 ? 60 : 30)),
         notificationSettings: {
           newLeads: true,
           leadExpiration: true,
@@ -76,41 +82,40 @@ async function createPartners() {
           pushNotifications: true
         },
         responseMetrics: {
-          averageResponseTime: partner.metrics.averageResponseTime,
-          responseRate: partner.metrics.responseRate,
-          totalLeadsReceived: partner.metrics.totalLeads,
-          totalLeadsContacted: partner.metrics.contactedLeads,
+          averageResponseTime: 10 + Math.floor(Math.random() * 20),
+          responseRate: 70 + Math.floor(Math.random() * 25),
+          totalLeadsReceived: 20 + Math.floor(Math.random() * 40),
+          totalLeadsContacted: 15 + Math.floor(Math.random() * 30),
           lastWeekPerformance: {
-            leads: Math.floor(partner.metrics.totalLeads * 0.2),
-            responses: Math.floor(partner.metrics.contactedLeads * 0.2),
-            averageTime: partner.metrics.averageResponseTime
+            leads: 5 + Math.floor(Math.random() * 10),
+            responses: 4 + Math.floor(Math.random() * 8),
+            averageTime: 8 + Math.floor(Math.random() * 10)
           }
         },
         billing: {
-          plan: 'professional',
+          plan: index === 0 ? 'professional' : 'basic',
           status: 'active',
           nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          amount: 299,
+          amount: index === 0 ? 299 : 180,
           paymentMethod: {
             type: 'credit_card',
             last4: '4242'
           }
         },
         siteDetails: {
-          address: partner.address,
+          address: `${100 + index * 100} Research Blvd`,
           city: partner.city,
           state: partner.state,
-          zipCode: '27601',
-          phone: '(919) 555-' + Math.floor(1000 + Math.random() * 9000),
-          principalInvestigator: `Dr. ${partner.name.split(' ')[0]} ${partner.name.split(' ')[1]}`,
-          studyCoordinator: 'Jane Smith',
-          specialties: ['Cardiology', 'Endocrinology', 'Neurology'],
-          certifications: ['GCP Certified', 'ACRP Certified'],
+          zipCode: `2810${index}`,
+          phone: `(704) 555-${1000 + index}`,
+          principalInvestigator: `Dr. ${['Sarah', 'Michael', 'Jennifer', 'David', 'Lisa'][index]} ${['Johnson', 'Smith', 'Williams', 'Brown', 'Miller'][index]}`,
+          specialties: partner.specialties,
+          certifications: ['GCP Certified'],
           capacity: {
-            maxPatients: 250,
-            currentPatients: partner.metrics.totalLeads,
-            studyRooms: 6,
-            staff: 12
+            maxPatients: 100 + index * 20,
+            currentPatients: Math.floor((50 + index * 10) * Math.random()),
+            studyRooms: 4 + index,
+            staff: 8 + index * 2
           }
         }
       };
@@ -119,29 +124,110 @@ async function createPartners() {
 
       // Create initial site
       const siteData = {
-        name: partner.siteName,
-        address: partner.address,
+        name: partner.name,
+        address: `${100 + index * 100} Research Blvd`,
         city: partner.city,
         state: partner.state,
-        zipCode: '27601',
-        phone: partnerData.siteDetails.phone,
-        principalInvestigator: partnerData.siteDetails.principalInvestigator,
-        studyCoordinator: partnerData.siteDetails.studyCoordinator,
+        zipCode: `2810${index}`,
+        phone: `(704) 555-${1000 + index}`,
+        principalInvestigator: `Dr. ${['Sarah', 'Michael', 'Jennifer', 'David', 'Lisa'][index]} ${['Johnson', 'Smith', 'Williams', 'Brown', 'Miller'][index]}`,
         status: 'active',
-        leads: partner.metrics.totalLeads,
-        responseRate: partner.metrics.responseRate + '%',
+        leads: Math.floor(Math.random() * 30),
+        responseRate: `${70 + Math.floor(Math.random() * 20)}%`,
         createdAt: new Date()
       };
 
       await adminDb.collection('partners').doc(userRecord.uid).collection('sites').add(siteData);
+      
+      // Create sample leads
+      const leadCount = 5 + Math.floor(Math.random() * 10);
+      console.log(`  Creating ${leadCount} sample leads for ${partner.name}`);
+      
+      for (let i = 0; i < leadCount; i++) {
+        const leadData = {
+          firstName: ['John', 'Mary', 'Robert', 'Patricia', 'Michael', 'Linda', 'James', 'Barbara', 'William', 'Elizabeth'][Math.floor(Math.random() * 10)],
+          lastName: ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Miller', 'Davis', 'Garcia', 'Rodriguez', 'Wilson'][Math.floor(Math.random() * 10)],
+          email: `patient${i + 1}${Math.floor(Math.random() * 1000)}@example.com`,
+          phone: `(704) ${555 + i}-${1000 + Math.floor(Math.random() * 9000)}`,
+          status: ['new', 'not_contacted', 'contacted', 'qualified', 'converted'][Math.floor(Math.random() * 5)] as any,
+          quality: ['hot', 'warm', 'cold'][Math.floor(Math.random() * 3)] as any,
+          createdAt: new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000),
+          lastUpdated: new Date(),
+          indication: partner.specialties[Math.floor(Math.random() * partner.specialties.length)],
+          notes: `Sample lead ${i + 1} for ${partner.name}. This patient is interested in clinical trials.`,
+          assignmentHistory: [
+            {
+              toPartnerId: userRecord.uid,
+              assignedBy: 'admin',
+              assignedAt: new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000)
+            }
+          ]
+        };
 
-      console.log(`Created partner: ${partner.name}`);
-      console.log(`Email: ${partner.email}`);
-      console.log(`UID: ${userRecord.uid}`);
-      console.log('---');
+        await adminDb.collection('partners').doc(userRecord.uid).collection('leads').add(leadData);
+      }
+      
+      // Create sample notifications
+      const notificationCount = 3 + Math.floor(Math.random() * 5);
+      console.log(`  Creating ${notificationCount} sample notifications for ${partner.name}`);
+      
+      for (let i = 0; i < notificationCount; i++) {
+        const notificationData = {
+          title: ['New Lead Assigned', 'Study Update', 'Action Required', 'Subscription Updated', 'Message Received'][Math.floor(Math.random() * 5)],
+          message: [
+            'A new lead has been assigned to your site.',
+            'The study protocol has been updated. Please review the changes.',
+            'Please update your lead status within 24 hours.',
+            'Your subscription has been updated to the latest plan.',
+            'You have received a new message from the admin team.'
+          ][Math.floor(Math.random() * 5)],
+          type: ['system', 'admin', 'lead'][Math.floor(Math.random() * 3)] as any,
+          read: Math.random() > 0.5,
+          createdAt: new Date(Date.now() - Math.floor(Math.random() * 7) * 24 * 60 * 60 * 1000),
+          partnerId: userRecord.uid
+        };
+
+        await adminDb.collection('partners').doc(userRecord.uid).collection('notifications').add(notificationData);
+        
+        // Also add to global notifications for admin visibility
+        await adminDb.collection('notifications').add({
+          ...notificationData,
+          createdBy: 'system'
+        });
+      }
+      
+      // Create sample messages
+      const messageCount = 2 + Math.floor(Math.random() * 4);
+      console.log(`  Creating ${messageCount} sample messages for ${partner.name}`);
+      
+      for (let i = 0; i < messageCount; i++) {
+        const messageData = {
+          content: [
+            'Welcome to the platform! Let us know if you have any questions.',
+            'Please update your lead statuses to improve your response metrics.',
+            'Your recent performance has been excellent. Keep up the good work!',
+            'We have a new study that might be a good fit for your site. Please review.',
+            'Don\'t forget to complete your profile information for better lead matching.'
+          ][Math.floor(Math.random() * 5)],
+          senderId: 'admin',
+          recipientId: userRecord.uid,
+          timestamp: new Date(Date.now() - Math.floor(Math.random() * 14) * 24 * 60 * 60 * 1000),
+          read: Math.random() > 0.5
+        };
+
+        await adminDb.collection('partners').doc(userRecord.uid).collection('messages').add(messageData);
+        
+        // Also add to global messages for admin visibility
+        await adminDb.collection('messages').add({
+          ...messageData,
+          recipientName: partner.name
+        });
+      }
+      
+      console.log(`✅ Successfully created partner: ${partner.name}`);
     }
 
-    console.log('Successfully created all partners!');
+    console.log('✅ Successfully created all partners with sample data');
     process.exit(0);
   } catch (error) {
     console.error('Error creating partners:', error);
@@ -149,4 +235,5 @@ async function createPartners() {
   }
 }
 
-createPartners();
+// Run the script
+createMultiplePartners();

@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
-  apiKey: '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',
+  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
   dangerouslyAllowBrowser: true // Only for development, use server-side in production
 });
 

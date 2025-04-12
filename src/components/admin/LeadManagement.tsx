@@ -5,21 +5,32 @@ import { AddPatientForm } from './AddPatientForm';
 import { Search, Download, Plus, ChevronDown, ChevronUp, LayoutGrid, LayoutList, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { useNotificationStore } from '../../store/useNotificationStore';
+import { db, auth } from '../../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { NewLeadButton } from '../NewLeadButton';
 
 export function LeadManagement() {
   const { leads, fetchLeads, isLoading, error } = useLeadStore();
-  const { partners } = useAdminStore();
+  const { partners, fetchPartners } = useAdminStore();
   const { sendNotification } = useNotificationStore();
   const [searchTerm, setSearchTerm] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
   const [sortConfig, setSortConfig] = useState<{
     key: string;
     direction: 'asc' | 'desc';
   }>({ key: 'createdAt', direction: 'desc' });
+  const [success, setSuccess] = useState<string | null>(null);
+  const [messageError, setMessageError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchLeads('admin');
-  }, []);
+  }, [fetchLeads]);
+
+  useEffect(() => {
+    // Fetch partners if not already loaded
+    if (partners.length === 0) {
+      fetchPartners();
+    }
+  }, [partners, fetchPartners]);
 
   const handleSort = (key: string) => {
     setSortConfig(current => ({
@@ -30,15 +41,56 @@ export function LeadManagement() {
 
   const handleSendMessage = async (partnerId: string) => {
     try {
-      await sendNotification(
+      // Find the partner
+      const partner = partners.find(p => p.id === partnerId);
+      if (!partner) {
+        throw new Error('Partner not found');
+      }
+      
+      // Create notification
+      const notificationId = await sendNotification(
         partnerId,
         'Message from Admin',
         'Please review your assigned leads and update their status accordingly.',
         'admin'
       );
+      
+      // Also save to messages collection
+      await addDoc(collection(db, `partners/${partnerId}/messages`), {
+        content: 'Please review your assigned leads and update their status accordingly.',
+        senderId: 'admin',
+        recipientId: partnerId,
+        timestamp: serverTimestamp(),
+        read: false,
+        title: 'Message from Admin'
+      });
+      
+      // Add to global messages collection for admin reference
+      await addDoc(collection(db, 'messages'), {
+        content: 'Please review your assigned leads and update their status accordingly.',
+        senderId: 'admin',
+        recipientId: partnerId,
+        recipientName: partner.name,
+        timestamp: serverTimestamp(),
+        read: false,
+        title: 'Message from Admin',
+        notificationId
+      });
+
       setSuccess('Message sent successfully');
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
     } catch (error) {
-      setError('Failed to send message');
+      console.error('Failed to send message:', error);
+      setMessageError('Failed to send message');
+      
+      // Clear error message after 3 seconds
+      setTimeout(() => {
+        setMessageError(null);
+      }, 3000);
     }
   };
 
@@ -83,13 +135,7 @@ export function LeadManagement() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold text-gray-900">Lead Management</h1>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Add Lead
-        </button>
+        <NewLeadButton variant="primary" size="medium" />
       </div>
 
       <div className="flex space-x-4 items-center">
@@ -104,6 +150,20 @@ export function LeadManagement() {
           />
         </div>
       </div>
+
+      {success && (
+        <div className="bg-green-50 text-green-700 p-4 rounded-lg flex items-center">
+          <CheckCircle className="w-5 h-5 mr-2" />
+          {success}
+        </div>
+      )}
+
+      {messageError && (
+        <div className="bg-red-50 text-red-700 p-4 rounded-lg flex items-center">
+          <AlertCircle className="w-5 h-5 mr-2" />
+          {messageError}
+        </div>
+      )}
 
       <div className="bg-white shadow-sm rounded-lg overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
@@ -176,6 +236,7 @@ export function LeadManagement() {
                     lead.status === 'not_contacted' ? 'bg-yellow-100 text-yellow-800' :
                     lead.status === 'contacted' ? 'bg-green-100 text-green-800' :
                     lead.status === 'qualified' ? 'bg-purple-100 text-purple-800' :
+                    lead.status === 'converted' ? 'bg-indigo-100 text-indigo-800' :
                     'bg-gray-100 text-gray-800'
                   }`}>
                     {lead.status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
@@ -189,7 +250,7 @@ export function LeadManagement() {
                     <button
                       onClick={() => handleSendMessage(lead.partnerId)}
                       className="text-blue-600 hover:text-blue-900"
-                      title="Send message"
+                      title="Send message to partner about this lead"
                     >
                       <MessageSquare className="w-5 h-5" />
                     </button>
@@ -197,17 +258,17 @@ export function LeadManagement() {
                 </td>
               </tr>
             ))}
+            
+            {filteredLeads.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                  No leads found. Add a new lead to get started.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
-
-      {showAddModal && (
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="max-w-4xl w-full mx-4">
-            <AddPatientForm onClose={() => setShowAddModal(false)} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

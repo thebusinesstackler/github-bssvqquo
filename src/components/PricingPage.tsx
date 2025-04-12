@@ -1,146 +1,130 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { StudySetupWizard } from './StudySetupWizard';
+import { createSubscription, getStripe } from '../lib/stripe';
 import { 
   CreditCard, 
-  Download, 
-  FileText, 
-  Users, 
-  MessageSquare, 
-  BarChart3, 
-  Shield, 
-  Star, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle, 
+  Loader2,
+  UserCheck,
+  Info
 } from 'lucide-react';
 
-interface PaymentMethod {
-  id: string;
-  last4: string;
-  brand: string;
-  expMonth: number;
-  expYear: number;
-}
-
-interface Receipt {
-  id: string;
-  date: Date;
-  amount: number;
-  description: string;
-  status: 'paid' | 'pending' | 'failed';
-  downloadUrl: string;
-}
+// Define the plans with their actual Stripe price IDs
+const PRICING_PLANS = [
+  {
+    name: 'Basic',
+    price: 2160,
+    priceId: 'price_1R7wg1G6sbu8wJbhoAeBQwTS',  // Basic Price ID
+    features: [
+      'Up to 50 leads per month',
+      'Basic recruitment tools',
+      'Essential study management',
+      'Standard support',
+      'Basic analytics'
+    ],
+    recommended: false
+  },
+  {
+    name: 'Professional',
+    price: 3650,
+    priceId: 'price_1R7wgnG6sbu8wJbh87KOeZsT',  // Professional Price ID
+    features: [
+      'Up to 100 leads per month',
+      'Advanced analytics',
+      'Priority support',
+      'Custom integrations',
+      'Dedicated success manager'
+    ],
+    recommended: true
+  },
+  {
+    name: 'Enterprise',
+    price: 4400,
+    priceId: 'price_1R7wi7G6sbu8wJbhV4Bn8jpQ',  // Enterprise Price ID
+    features: [
+      'Unlimited leads',
+      'Full platform access',
+      '24/7 premium support',
+      'Custom development',
+      'White-label options'
+    ],
+    recommended: false
+  }
+];
 
 export default function PricingPage() {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, impersonatedUser } = useAuthStore();
   const [showSetupWizard, setShowSetupWizard] = useState(false);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
-
-  const [cardDetails, setCardDetails] = useState({
-    number: '',
-    expiry: '',
-    cvc: '',
-    name: ''
-  });
-
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const plans = [
-    {
-      name: 'Basic',
-      price: 2160,
-      description: 'Perfect for smaller research sites',
-      features: [
-        'Up to 50 leads per month',
-        'Basic recruitment tools',
-        'Essential study management',
-        'Standard support',
-        'Basic analytics'
-      ],
-      recommended: false
-    },
-    {
-      name: 'Professional',
-      price: 3650,
-      description: 'For growing research organizations',
-      features: [
-        'Up to 100 leads per month',
-        'Advanced analytics',
-        'Priority support',
-        'Custom integrations',
-        'Dedicated success manager'
-      ],
-      recommended: true
-    },
-    {
-      name: 'Enterprise',
-      price: 4400,
-      description: 'For large research institutions',
-      features: [
-        'Unlimited leads',
-        'Full platform access',
-        '24/7 premium support',
-        'Custom development',
-        'White-label options'
-      ],
-      recommended: false
-    }
-  ];
+  // Get the effective user (either impersonated or actual user)
+  const effectiveUser = impersonatedUser || user;
+  const isAdmin = user?.role === 'admin';
+  const isImpersonating = !!impersonatedUser;
 
-  const handleSelectPlan = (planName: string) => {
-    setSelectedPlan(planName);
-    setShowSetupWizard(true);
-  };
+  // Cleanup function for subscription listener
+  const [unsubscribe, setUnsubscribe] = useState<(() => void) | null>(null);
 
-  const handleAddCard = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Cleanup subscription listener on unmount
+  useEffect(() => {
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [unsubscribe]);
+
+  const handleSelectPlan = async (plan: typeof PRICING_PLANS[0]) => {
+    // Clear previous errors and cleanup
     setError(null);
-    setSuccess(null);
+    if (unsubscribe) {
+      unsubscribe();
+      setUnsubscribe(null);
+    }
+    
+    // Validate user authentication
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    // Get the target user ID - this is either the impersonated user (if admin is impersonating)
+    // or the actual logged in user
+    const targetUserId = impersonatedUser?.id || user.id;
+    const targetUserEmail = impersonatedUser?.email || user.email;
+
+    // Validate user ID and email exist
+    if (!targetUserId || !targetUserEmail) {
+      setError('User information not found. Please log out and log in again.');
+      return;
+    }
+
+    setSelectedPlan(plan.name);
+    setIsLoading(true);
 
     try {
-      // Simulate adding a card
-      const newCard: PaymentMethod = {
-        id: Math.random().toString(36).substr(2, 9),
-        last4: cardDetails.number.slice(-4),
-        brand: 'visa',
-        expMonth: parseInt(cardDetails.expiry.split('/')[0]),
-        expYear: parseInt(cardDetails.expiry.split('/')[1])
-      };
+      // Create checkout session and get unsubscribe function
+      const cleanup = await createSubscription(
+        targetUserId, 
+        plan.priceId,
+        isImpersonating ? user.id : undefined
+      );
 
-      setPaymentMethods([...paymentMethods, newCard]);
-      setShowPaymentForm(false);
-      setSuccess('Payment method added successfully');
-      
-      // Clear form
-      setCardDetails({
-        number: '',
-        expiry: '',
-        cvc: '',
-        name: ''
-      });
+      // Store unsubscribe function for cleanup
+      setUnsubscribe(() => cleanup);
     } catch (err) {
-      setError('Failed to add payment method');
+      console.error('Error creating subscription:', err);
+      setError(err instanceof Error ? err.message : 'Failed to process subscription');
+      setIsLoading(false);
+      setSelectedPlan(null);
     }
-  };
-
-  const formatCardNumber = (input: string) => {
-    const numbers = input.replace(/\D/g, '');
-    const groups = numbers.match(/.{1,4}/g) || [];
-    return groups.join(' ').substr(0, 19);
-  };
-
-  const formatExpiry = (input: string) => {
-    const numbers = input.replace(/\D/g, '');
-    if (numbers.length >= 2) {
-      return `${numbers.slice(0, 2)}/${numbers.slice(2, 4)}`;
-    }
-    return numbers;
   };
 
   if (showSetupWizard) {
@@ -157,17 +141,38 @@ export default function PricingPage() {
         <p className="text-xl text-gray-600 mb-8">
           Connect with pre-screened, engaged patients and streamline your recruitment process
         </p>
-        <button
-          onClick={() => navigate('/pricing')}
-          className="inline-flex items-center px-6 py-3 text-lg font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Get Started Today
-        </button>
       </div>
+
+      {/* Admin Impersonation Banner */}
+      {isAdmin && isImpersonating && (
+        <div className="mb-6 bg-blue-50 text-blue-700 p-4 rounded-lg flex items-center">
+          <UserCheck className="w-5 h-5 mr-2" />
+          <span>
+            You are currently managing subscriptions for <strong>{impersonatedUser.name}</strong> as an admin.
+            Any subscription you select will be assigned to this partner.
+          </span>
+        </div>
+      )}
+
+      {/* Error Messages (top level) */}
+      {error && (
+        <div className="mb-6 bg-red-50 text-red-700 p-4 rounded-lg flex items-center">
+          <AlertCircle className="w-5 h-5 mr-2" />
+          {error}
+        </div>
+      )}
+
+      {/* User authentication check */}
+      {!user && (
+        <div className="mb-6 bg-yellow-50 text-yellow-700 p-4 rounded-lg flex items-center">
+          <AlertCircle className="w-5 h-5 mr-2" />
+          Please log in to subscribe to a plan.
+        </div>
+      )}
 
       {/* Pricing Plans */}
       <div className="grid md:grid-cols-3 gap-8 mb-12">
-        {plans.map((plan) => (
+        {PRICING_PLANS.map((plan) => (
           <div
             key={plan.name}
             className={`bg-white rounded-lg shadow-sm border ${
@@ -181,7 +186,7 @@ export default function PricingPage() {
             )}
 
             <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
-            <p className="mt-2 text-sm text-gray-500">{plan.description}</p>
+            <p className="mt-2 text-sm text-gray-500">Perfect for growing research organizations</p>
             
             <div className="mt-4">
               <span className="text-3xl font-bold text-gray-900">${plan.price}</span>
@@ -198,217 +203,84 @@ export default function PricingPage() {
             </ul>
 
             <button
-              onClick={() => handleSelectPlan(plan.name)}
+              onClick={() => handleSelectPlan(plan)}
+              disabled={isLoading || !user}
               className={`mt-8 w-full py-2 px-4 rounded-md ${
-                plan.recommended
+                isLoading && selectedPlan === plan.name
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : !user
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : plan.recommended
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50'
               }`}
             >
-              Get Started
+              {isLoading && selectedPlan === plan.name ? (
+                <div className="flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Processing...
+                </div>
+              ) : !user ? (
+                'Login Required'
+              ) : isImpersonating ? (
+                `Assign to ${impersonatedUser.name}`
+              ) : (
+                'Get Started'
+              )}
             </button>
           </div>
         ))}
       </div>
 
       {/* Payment Methods */}
-      <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">Payment Methods</h2>
-          <button
-            onClick={() => setShowPaymentForm(true)}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            <CreditCard className="w-5 h-5 mr-2" />
-            Add Payment Method
-          </button>
-        </div>
-
-        {paymentMethods.length > 0 ? (
-          <div className="space-y-4">
-            {paymentMethods.map((method) => (
-              <div
-                key={method.id}
-                className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-              >
-                <div className="flex items-center">
-                  <CreditCard className="w-6 h-6 text-gray-400 mr-3" />
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      {method.brand.toUpperCase()} •••• {method.last4}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      Expires {method.expMonth}/{method.expYear}
-                    </p>
-                  </div>
-                </div>
-                <button className="text-red-600 hover:text-red-700 text-sm">
-                  Remove
-                </button>
-              </div>
-            ))}
+      {user && (
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">Payment Methods</h2>
           </div>
-        ) : (
-          <p className="text-gray-500 text-center py-4">No payment methods added</p>
-        )}
 
-        {/* Add Payment Method Form */}
-        {showPaymentForm && (
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Add Payment Method</h3>
-              
-              <form onSubmit={handleAddCard} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Card Number
-                  </label>
-                  <input
-                    type="text"
-                    value={cardDetails.number}
-                    onChange={(e) => setCardDetails({
-                      ...cardDetails,
-                      number: formatCardNumber(e.target.value)
-                    })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="1234 5678 9012 3456"
-                    maxLength={19}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      Expiry Date
-                    </label>
-                    <input
-                      type="text"
-                      value={cardDetails.expiry}
-                      onChange={(e) => setCardDetails({
-                        ...cardDetails,
-                        expiry: formatExpiry(e.target.value)
-                      })}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="MM/YY"
-                      maxLength={5}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">
-                      CVC
-                    </label>
-                    <input
-                      type="text"
-                      value={cardDetails.cvc}
-                      onChange={(e) => setCardDetails({
-                        ...cardDetails,
-                        cvc: e.target.value.replace(/\D/g, '').slice(0, 3)
-                      })}
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="123"
-                      maxLength={3}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Name on Card
-                  </label>
-                  <input
-                    type="text"
-                    value={cardDetails.name}
-                    onChange={(e) => setCardDetails({
-                      ...cardDetails,
-                      name: e.target.value
-                    })}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    placeholder="John Smith"
-                  />
-                </div>
-
-                <div className="flex justify-end space-x-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => setShowPaymentForm(false)}
-                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    Add Card
-                  </button>
-                </div>
-              </form>
+          <div className="flex items-center justify-center py-8">
+            <div className="flex flex-col items-center text-gray-500">
+              <CreditCard className="w-16 h-16 mb-4 text-gray-300" />
+              <p>Your payment methods will appear here after checkout</p>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Billing History */}
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-6">Billing History</h2>
-        
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Description
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Receipt
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {receipts.map((receipt) => (
-                <tr key={receipt.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {receipt.date.toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {receipt.description}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    ${receipt.amount.toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      receipt.status === 'paid'
-                        ? 'bg-green-100 text-green-800'
-                        : receipt.status === 'pending'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}>
-                      {receipt.status.charAt(0).toUpperCase() + receipt.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <a
-                      href={receipt.downloadUrl}
-                      className="text-blue-600 hover:text-blue-900 flex items-center justify-end"
-                    >
-                      <Download className="w-4 h-4 mr-1" />
-                      Download
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Testing Information */}
+      <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-6 mb-8">
+        <div className="flex items-start">
+          <Info className="w-6 h-6 text-yellow-500 mr-3 flex-shrink-0 mt-1" />
+          <div>
+            <h3 className="font-medium text-yellow-800 mb-2">Test Mode Information</h3>
+            <p className="text-yellow-700 mb-2">
+              To test the payment process, use Stripe's test credit card numbers:
+            </p>
+            <div className="bg-white p-4 rounded border border-yellow-200 mb-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <p className="font-medium">Card Number:</p>
+                  <code className="block p-2 bg-gray-100 rounded mt-1">4242 4242 4242 4242</code>
+                </div>
+                <div>
+                  <p className="font-medium">Expiration:</p>
+                  <code className="block p-2 bg-gray-100 rounded mt-1">Any future date</code>
+                </div>
+                <div>
+                  <p className="font-medium">CVC:</p>
+                  <code className="block p-2 bg-gray-100 rounded mt-1">Any 3 digits</code>
+                </div>
+                <div>
+                  <p className="font-medium">ZIP:</p>
+                  <code className="block p-2 bg-gray-100 rounded mt-1">Any 5 digits</code>
+                </div>
+              </div>
+            </div>
+            <p className="text-yellow-700 text-sm">
+              This test card will successfully complete the payment flow without charging a real card.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -424,6 +296,29 @@ export default function PricingPage() {
         <div className="fixed bottom-4 right-4 bg-green-50 text-green-700 p-4 rounded-lg shadow-lg flex items-center">
           <CheckCircle2 className="w-5 h-5 mr-2" />
           {success}
+        </div>
+      )}
+
+      {/* Debug information - only in development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mt-8 p-4 bg-gray-100 rounded-lg text-xs">
+          <p className="font-medium mb-1">Debug info:</p>
+          <div className="grid grid-cols-2 gap-2">
+            <p>Actual User ID: {user?.id}</p>
+            <p>Actual User Email: {user?.email}</p>
+            <p>Actual User Role: {user?.role}</p>
+            {impersonatedUser && (
+              <>
+                <p>Impersonated User ID: {impersonatedUser.id}</p>
+                <p>Impersonated User Email: {impersonatedUser.email}</p>
+                <p>Impersonated User Name: {impersonatedUser.name}</p>
+              </>
+            )}
+            <p>Is Admin: {isAdmin ? 'Yes' : 'No'}</p>
+            <p>Is Impersonating: {isImpersonating ? 'Yes' : 'No'}</p>
+            <p>Target User ID: {effectiveUser?.id}</p>
+            <p>Target User Email: {effectiveUser?.email}</p>
+          </div>
         </div>
       )}
     </div>

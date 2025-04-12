@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLeadStore } from '../store/useLeadStore';
 import { X, AlertCircle, CheckCircle } from 'lucide-react';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 
 interface AddLeadModalProps {
   onClose: () => void;
@@ -35,6 +37,19 @@ export function AddLeadModal({ onClose }: AddLeadModalProps) {
         throw new Error('User not authenticated');
       }
 
+      // Log debug information before adding
+      console.log('Adding lead with data:', {
+        ...formData,
+        partnerId: effectiveUser.id,
+      });
+      
+      console.log('Current user:', {
+        id: effectiveUser.id, 
+        email: effectiveUser.email,
+        role: effectiveUser.role
+      });
+
+      // Add directly to Firebase using store method
       await addLead({
         ...formData,
         partnerId: effectiveUser.id
@@ -45,6 +60,7 @@ export function AddLeadModal({ onClose }: AddLeadModalProps) {
         onClose();
       }, 1500);
     } catch (err) {
+      console.error('Error adding lead:', err);
       setError(err instanceof Error ? err.message : 'Failed to add lead');
     } finally {
       setIsLoading(false);

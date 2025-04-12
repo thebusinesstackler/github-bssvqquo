@@ -1,11 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ProtocolUpload } from './ProtocolUpload';
-import { getAuth } from 'firebase/auth';
-import { createSubscription } from '../lib/stripe';
-import { StripePaymentForm } from './StripePaymentForm';
-import { Elements } from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
 import { 
   FileText, 
   Users, 
@@ -21,11 +16,10 @@ import {
   Shield,
   Star,
   AlertCircle,
+  CreditCard,
+  Lock,
   Upload
 } from 'lucide-react';
-
-// Initialize Stripe
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 interface StudyDetails {
   protocolNumber: string;
@@ -51,16 +45,71 @@ interface StudyDetails {
   };
 }
 
-const PRICE_IDS = {
-  'Basic': 'price_1R8ncM4Ni6a2sxmWGu3hnPHs',
-  'Professional': 'price_1R8ncw4Ni6a2sxmWAI7h3Bgn', 
-  'Enterprise': 'price_1R8ndH4Ni6a2sxmW1A9VyiiR'
-};
+interface PricingPlan {
+  name: string;
+  price: number;
+  features: string[];
+  recommended: boolean;
+  leadLimit: number;
+  supportLevel: string;
+}
+
+interface PaymentDetails {
+  cardNumber: string;
+  cardName: string;
+  expiryDate: string;
+  cvc: string;
+}
+
+const PRICING_PLANS: PricingPlan[] = [
+  {
+    name: 'Basic',
+    price: 2160,
+    features: [
+      'Up to 50 leads per month',
+      'Basic lead management tools',
+      'Email support',
+      'Standard response time',
+      'Basic analytics'
+    ],
+    recommended: false,
+    leadLimit: 50,
+    supportLevel: 'Standard'
+  },
+  {
+    name: 'Professional',
+    price: 3650,
+    features: [
+      'Up to 100 leads per month',
+      'Advanced lead management',
+      'Priority support',
+      'Custom integrations',
+      'Advanced analytics',
+      'Dedicated success manager'
+    ],
+    recommended: true,
+    leadLimit: 100,
+    supportLevel: 'Priority'
+  },
+  {
+    name: 'Enterprise',
+    price: 4400,
+    features: [
+      'Unlimited leads',
+      'Full platform access',
+      '24/7 premium support',
+      'Custom development',
+      'White-label options',
+      'API access'
+    ],
+    recommended: false,
+    leadLimit: -1, // Unlimited
+    supportLevel: 'Premium'
+  }
+];
 
 export function StudySetupWizard() {
   const navigate = useNavigate();
-  const auth = getAuth();
-  const user = auth.currentUser;
   const [currentStep, setCurrentStep] = useState(1);
   const [studyDetails, setStudyDetails] = useState<StudyDetails>({
     protocolNumber: '',
@@ -86,9 +135,14 @@ export function StudySetupWizard() {
   });
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails>({
+    cardNumber: '',
+    cardName: '',
+    expiryDate: '',
+    cvc: ''
+  });
   const [showProtocolUpload, setShowProtocolUpload] = useState(false);
   const [generatedFields, setGeneratedFields] = useState<any[]>([]);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
 
   const handleStudyDetailsChange = (field: keyof StudyDetails, value: any) => {
     setStudyDetails(prev => ({
@@ -107,9 +161,64 @@ export function StudySetupWizard() {
     }));
   };
 
-  const handleProtocolSuccess = (fields: any[]) => {
-    setGeneratedFields(fields);
-    setShowProtocolUpload(false);
+  const addCriteria = (type: 'inclusion' | 'exclusion') => {
+    setStudyDetails(prev => ({
+      ...prev,
+      [type === 'inclusion' ? 'inclusionCriteria' : 'exclusionCriteria']: [
+        ...prev[type === 'inclusion' ? 'inclusionCriteria' : 'exclusionCriteria'],
+        ''
+      ]
+    }));
+  };
+
+  const updateCriteria = (type: 'inclusion' | 'exclusion', index: number, value: string) => {
+    setStudyDetails(prev => ({
+      ...prev,
+      [type === 'inclusion' ? 'inclusionCriteria' : 'exclusionCriteria']: prev[
+        type === 'inclusion' ? 'inclusionCriteria' : 'exclusionCriteria'
+      ].map((criteria, i) => (i === index ? value : criteria))
+    }));
+  };
+
+  const removeCriteria = (type: 'inclusion' | 'exclusion', index: number) => {
+    setStudyDetails(prev => ({
+      ...prev,
+      [type === 'inclusion' ? 'inclusionCriteria' : 'exclusionCriteria']: prev[
+        type === 'inclusion' ? 'inclusionCriteria' : 'exclusionCriteria'
+      ].filter((_, i) => i !== index)
+    }));
+  };
+
+  const addCoordinator = () => {
+    setStudyDetails(prev => ({
+      ...prev,
+      siteDetails: {
+        ...prev.siteDetails,
+        coordinators: [...prev.siteDetails.coordinators, '']
+      }
+    }));
+  };
+
+  const updateCoordinator = (index: number, value: string) => {
+    setStudyDetails(prev => ({
+      ...prev,
+      siteDetails: {
+        ...prev.siteDetails,
+        coordinators: prev.siteDetails.coordinators.map((coord, i) => 
+          i === index ? value : coord
+        )
+      }
+    }));
+  };
+
+  const removeCoordinator = (index: number) => {
+    setStudyDetails(prev => ({
+      ...prev,
+      siteDetails: {
+        ...prev.siteDetails,
+        coordinators: prev.siteDetails.coordinators.filter((_, i) => i !== index)
+      }
+    }));
   };
 
   const handleNext = () => {
@@ -133,63 +242,33 @@ export function StudySetupWizard() {
     setCurrentStep(prev => prev - 1);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!selectedPlan) {
       setError('Please select a plan to continue');
       return;
     }
 
-    try {
-      const priceId = PRICE_IDS[selectedPlan as keyof typeof PRICE_IDS];
-      if (!priceId) {
-        throw new Error('Invalid plan selected');
-      }
-
-      await createSubscription(priceId);
-    } catch (error) {
-      console.error('Error creating subscription:', error);
-      setError(error instanceof Error ? error.message : 'Failed to create subscription');
-    }
+    // Navigate to settings page after successful setup
+    navigate('/settings');
   };
 
-  const handlePlanSelect = async (planName: string) => {
-    setSelectedPlan(planName);
-    setError(null);
-  
-    try {
-      const priceId = PRICE_IDS[planName as keyof typeof PRICE_IDS];
-      if (!priceId) {
-        throw new Error('Invalid plan selected');
-      }
-  
-      // Get the auth token
-      const token = await user?.getIdToken();
-      if (!token) {
-        throw new Error('Authentication required');
-      }
-  
-      // Create payment intent
-      const response = await fetch(`${import.meta.env.VITE_FIREBASE_FUNCTIONS_URL}/createPaymentIntent`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ priceId }),
-      });
-  
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create payment intent');
-      }
-  
-      const { clientSecret } = await response.json();
-      setClientSecret(clientSecret);
-    } catch (error) {
-      console.error('Error creating payment intent:', error);
-      setError(error instanceof Error ? error.message : 'Failed to create payment intent');
-    }
+  const handleProtocolSuccess = (fields: any[]) => {
+    setGeneratedFields(fields);
+    // Update study details with AI-generated fields
+    setStudyDetails(prev => ({
+      ...prev,
+      inclusionCriteria: fields
+        .filter(f => f.category === 'eligibility' && f.type === 'checkbox')
+        .map(f => f.label),
+      exclusionCriteria: fields
+        .filter(f => f.category === 'medical' && f.type === 'radio')
+        .map(f => f.label)
+    }));
   };
+
+  const recommendedPlan = PRICING_PLANS.find(plan => 
+    plan.leadLimit >= studyDetails.targetEnrollment
+  ) || PRICING_PLANS[PRICING_PLANS.length - 1];
 
   return (
     <div className="max-w-4xl mx-auto py-8">
@@ -321,6 +400,70 @@ export function StudySetupWizard() {
                 </div>
               </div>
             </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">Inclusion Criteria</label>
+                  <button
+                    type="button"
+                    onClick={() => addCriteria('inclusion')}
+                    className="text-sm text-blue-600 hover:text-blue-700"
+                  >
+                    + Add Criteria
+                  </button>
+                </div>
+                {studyDetails.inclusionCriteria.map((criteria, index) => (
+                  <div key={index} className="mt-2 flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={criteria}
+                      onChange={(e) => updateCriteria('inclusion', index, e.target.value)}
+                      className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Enter inclusion criteria"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeCriteria('inclusion', index)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">Exclusion Criteria</label>
+                  <button
+                    type="button"
+                    onClick={() => addCriteria('exclusion')}
+                    className="text-sm text-blue-600 hover:text-blue-700"
+                  >
+                    + Add Criteria
+                  </button>
+                </div>
+                {studyDetails.exclusionCriteria.map((criteria, index) => (
+                  <div key={index} className="mt-2 flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={criteria}
+                      onChange={(e) => updateCriteria('exclusion', index, e.target.value)}
+                      className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Enter exclusion criteria"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeCriteria('exclusion', index)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -421,6 +564,37 @@ export function StudySetupWizard() {
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
                 />
               </div>
+
+              <div className="col-span-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">Study Coordinators</label>
+                  <button
+                    type="button"
+                    onClick={addCoordinator}
+                    className="text-sm text-blue-600 hover:text-blue-700"
+                  >
+                    + Add Coordinator
+                  </button>
+                </div>
+                {studyDetails.siteDetails.coordinators.map((coordinator, index) => (
+                  <div key={index} className="mt-2 flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={coordinator}
+                      onChange={(e) => updateCoordinator(index, e.target.value)}
+                      className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Enter coordinator name"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeCoordinator(index)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -454,52 +628,7 @@ export function StudySetupWizard() {
 
             {/* Pricing Plans */}
             <div className="grid grid-cols-3 gap-6">
-              {[
-                {
-                  name: 'Basic',
-                  price: 2160,
-                  features: [
-                    'Up to 50 leads per month',
-                    'Basic lead management tools',
-                    'Email support',
-                    'Standard response time',
-                    'Basic analytics'
-                  ],
-                  recommended: false,
-                  leadLimit: 50,
-                  supportLevel: 'Standard'
-                },
-                {
-                  name: 'Professional',
-                  price: 3650,
-                  features: [
-                    'Up to 100 leads per month',
-                    'Advanced lead management',
-                    'Priority support',
-                    'Custom integrations',
-                    'Advanced analytics',
-                    'Dedicated success manager'
-                  ],
-                  recommended: true,
-                  leadLimit: 100,
-                  supportLevel: 'Priority'
-                },
-                {
-                  name: 'Enterprise',
-                  price: 4400,
-                  features: [
-                    'Unlimited leads',
-                    'Full platform access',
-                    '24/7 premium support',
-                    'Custom development',
-                    'White-label options',
-                    'API access'
-                  ],
-                  recommended: false,
-                  leadLimit: -1,
-                  supportLevel: 'Premium'
-                }
-              ].map((plan) => (
+              {PRICING_PLANS.map((plan) => (
                 <div
                   key={plan.name}
                   className={`relative rounded-lg border ${
@@ -529,7 +658,7 @@ export function StudySetupWizard() {
                     ))}
                   </ul>
                   <button
-                    onClick={() => handlePlanSelect(plan.name)}
+                    onClick={() => setSelectedPlan(plan.name)}
                     className={`mt-6 w-full py-2 px-4 rounded-md ${
                       selectedPlan === plan.name
                         ? 'bg-blue-600 text-white hover:bg-blue-700'
@@ -542,15 +671,22 @@ export function StudySetupWizard() {
               ))}
             </div>
 
-            {/* Stripe Payment Form */}
-            {selectedPlan && clientSecret && (
-              <Elements stripe={stripePromise} options={{ clientSecret }}>
-                <StripePaymentForm
-                  clientSecret={clientSecret}
-                  amount={selectedPlan === 'Basic' ? 2160 : selectedPlan === 'Professional' ? 3650 : 4400}
-                  onSuccess={handleSubmit}
-                />
-              </Elements>
+            {recommendedPlan && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="flex items-start">
+                  <Star className="w-5 h-5 text-blue-600 mt-1 mr-2" />
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">
+                      Based on your target enrollment of {studyDetails.targetEnrollment} participants,
+                      we recommend the {recommendedPlan.name} plan.
+                    </p>
+                    <p className="mt-1 text-sm text-blue-700">
+                      This plan includes {recommendedPlan.leadLimit === -1 ? 'unlimited' : recommendedPlan.leadLimit} leads
+                      and {recommendedPlan.supportLevel} support to help you meet your recruitment goals.
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -588,6 +724,7 @@ export function StudySetupWizard() {
         </div>
       </div>
 
+      {/* Protocol Upload Modal */}
       {showProtocolUpload && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
           <div className="max-w-2xl w-full mx-4">

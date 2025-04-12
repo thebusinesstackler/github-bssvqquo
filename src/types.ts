@@ -1,6 +1,7 @@
 import { Timestamp } from 'firebase/firestore';
 
 export type LeadStatus = 'new' | 'not_contacted' | 'contacted' | 'qualified' | 'converted' | 'lost';
+export type LeadQuality = 'hot' | 'warm' | 'cold';
 
 export interface Lead {
   id: string;
@@ -20,6 +21,11 @@ export interface Lead {
   statusHistory?: LeadStatusChange[];
   messages?: Message[];
   formResponses?: FormResponse[];
+  quality?: LeadQuality;
+  assignedBy?: string;
+  assignmentHistory?: LeadAssignment[];
+  companyName?: string; // Added field
+  siteId?: string;      // Reference to a specific site
 }
 
 export interface LeadStatusChange {
@@ -27,6 +33,14 @@ export interface LeadStatusChange {
   timestamp: Date;
   updatedBy: string;
   notes?: string;
+}
+
+export interface LeadAssignment {
+  fromPartnerId?: string;
+  toPartnerId: string;
+  assignedBy: string;
+  assignedAt: Date;
+  reason?: string;
 }
 
 export interface Message {
@@ -42,21 +56,38 @@ export interface Partner {
   id: string;
   name: string;
   email: string;
-  role: 'partner' | 'admin';
+  role: 'partner' | 'admin' | 'sponsor';
   active: boolean;
   createdAt: Date;
-  subscription: SubscriptionTier;
+  subscription: string;
   maxLeads: number;
   currentLeads: number;
   responseMetrics: ResponseMetrics;
-  billing: BillingInfo;
+  billing?: BillingInfo;
   notificationSettings: NotificationSettings;
   assignedForms?: string[];
-  stripeCustomerId?: string;
-  subscriptionId?: string;
+  quotaUtilization?: number;
+  firstName?: string;
+  lastName?: string;
+  siteName?: string;
+  siteDetails?: {
+    address: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    phone: string;
+    principalInvestigator: string;
+    studyCoordinator?: string;
+    specialties: string[];
+    certifications: string[];
+    capacity?: {
+      maxPatients: number;
+      currentPatients: number;
+      studyRooms: number;
+      staff: number;
+    }
+  };
 }
-
-export type SubscriptionTier = 'basic' | 'professional' | 'enterprise';
 
 export interface ResponseMetrics {
   averageResponseTime: number;
@@ -71,14 +102,18 @@ export interface ResponseMetrics {
 }
 
 export interface BillingInfo {
-  plan: SubscriptionTier;
-  status: 'active' | 'past_due' | 'canceled';
+  plan: string;
+  status: 'active' | 'past_due' | 'canceled' | 'incomplete';
   nextBillingDate: Date;
   amount: number;
   paymentMethod: {
     type: string;
     last4: string;
+    brand?: string;
+    expMonth?: number;
+    expYear?: number;
   };
+  stripeCustomerId?: string;
   stripeSubscriptionId?: string;
   stripePriceId?: string;
 }
@@ -95,24 +130,19 @@ export interface NotificationSettings {
 export interface User {
   id: string;
   name: string;
-  firstName?: string;
   email: string;
-  role: 'admin' | 'partner';
+  role: 'admin' | 'partner' | 'sponsor';
   active: boolean;
   createdAt: Date;
-  subscription?: SubscriptionTier;
+  subscription?: string;
   maxLeads?: number;
-  stripeCustomerId?: string;
   phone?: string;
   title?: string;
-  organization?: string;
+  company?: string;
+  phoneNumber?: string;
   photoURL?: string;
-  billing?: {
-    plan: SubscriptionTier;
-    status: 'active' | 'past_due' | 'canceled';
-    nextBillingDate: Date;
-    amount: number;
-  };
+  firstName?: string;
+  lastName?: string;
 }
 
 export interface AdminMetrics {
@@ -177,55 +207,202 @@ export interface FormResponse {
   qualified?: boolean;
 }
 
-export interface PaymentDetails {
-  cardholderName: string;
-  cardNumber: string;
-  expiryDate: string;
-  cvc: string;
-}
-
-export interface PaymentErrors {
-  cardholderName?: string;
-  cardNumber?: string;
-  expiryDate?: string;
-  cvc?: string;
-}
-
-export interface StripePrice {
+export interface PatientStatus {
   id: string;
-  product: string;
-  unit_amount: number;
-  currency: string;
-  recurring: {
-    interval: string;
-    interval_count: number;
-  };
-  metadata: {
-    tier: SubscriptionTier;
-    maxLeads: number;
+  name: string;
+}
+
+export type Patient = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  age: number;
+  sex: string;
+  phone: string;
+  email?: string;
+  indication: string;
+  status: 'ineligible' | 'screening' | 'eligible' | 'randomized' | 'completed' | 'archived';
+  protocol?: string;
+  site?: string;
+  bmi?: number;
+  createdAt: Date;
+  lastUpdated: Date;
+};
+
+export interface Site {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  phone: string;
+  principalInvestigator: string;
+  studyCoordinator: string;
+  status: 'active' | 'inactive';
+  leads: number;
+  responseRate: string;
+  createdAt: Date;
+}
+
+export interface Protocol {
+  id: string;
+  name: string;
+  phase?: string;
+  indication?: string;
+  status?: 'active' | 'inactive' | 'completed';
+  startDate?: Date;
+  endDate?: Date;
+  inclusionCriteria?: string[];
+  exclusionCriteria?: string[];
+}
+
+export interface Indication {
+  id: string;
+  name: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  partnerId: string;
+  status: 'active' | 'inactive' | 'pending';
+  createdAt: Date;
+  updatedAt: Date;
+  notes?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  lastContact?: Date;
+  source?: string;
+}
+
+export type SubscriptionTier = 'none' | 'basic' | 'professional' | 'enterprise';
+
+export interface LeadQuota {
+  partnerId: string;
+  partnerName: string;
+  maxLeads: number;
+  currentLeads: number;
+  utilizationPercentage: number;
+  history?: {
+    date: Date;
+    quota: number;
+    utilization: number;
+  }[];
+}
+
+export interface LeadPerformanceMetrics {
+  partnerId: string;
+  partnerName: string;
+  totalLeads: number;
+  contactRate: number;
+  conversionRate: number;
+  avgResponseTime: number; // in hours
+  qualityDistribution: {
+    hot: number;
+    warm: number;
+    cold: number;
   };
 }
 
-export interface PaymentMethod {
+export interface LeadAssignmentHistory {
+  leadId: string;
+  leadName: string;
+  quality: LeadQuality;
+  assignments: {
+    partnerId: string;
+    partnerName: string;
+    assignedAt: Date;
+    assignedBy: string;
+    reason?: string;
+  }[];
+}
+
+export interface Notification {
+  id: string;
+  partnerId: string;
+  title: string;
+  message: string;
+  type: 'system' | 'admin' | 'lead';
+  read: boolean;
+  createdAt: Date;
+  leadId?: string;
+  createdBy?: string;
+}
+
+export interface StripeSubscription {
+  id: string;
+  priceId: string;
+  status: string;
+  currentPeriodEnd: Date;
+  cancelAtPeriodEnd: boolean;
+  partnerId: string;
+  amount: number;
+  plan: string;
+}
+
+export interface StripePaymentMethod {
   id: string;
   type: string;
+  partnerId: string;
   card?: {
     brand: string;
     last4: string;
-    exp_month: number;
-    exp_year: number;
+    expMonth: number;
+    expYear: number;
   };
-  billing_details?: {
-    name: string;
-    email: string;
-    phone?: string;
-    address?: {
-      line1?: string;
-      line2?: string;
-      city?: string;
-      state?: string;
-      postal_code?: string;
-      country?: string;
-    };
+  isDefault: boolean;
+}
+
+export interface ActivityLog {
+  id: string;
+  action: string;
+  userId: string;
+  userName: string;
+  timestamp: Date;
+  details: any;
+  resourceType?: string;
+  resourceId?: string;
+  ipAddress?: string;
+  status: 'success' | 'error' | 'warning';
+}
+
+export interface PaymentTransaction {
+  id: string;
+  partnerId: string;
+  amount: number;
+  currency: string;
+  status: 'succeeded' | 'pending' | 'failed';
+  createdAt: Date;
+  description: string;
+  paymentMethod: {
+    type: string;
+    last4?: string;
+    brand?: string;
   };
+  receiptUrl?: string;
+  refunded?: boolean;
+}
+
+export interface Invoice {
+  id: string;
+  partnerId: string;
+  amount: number;
+  amountPaid: number;
+  amountDue: number;
+  status: 'paid' | 'open' | 'draft' | 'void';
+  createdAt: Date;
+  dueDate: Date;
+  pdfUrl?: string;
+  subscription?: string;
+  description: string;
+  lines: {
+    description: string;
+    amount: number;
+    quantity?: number;
+  }[];
 }

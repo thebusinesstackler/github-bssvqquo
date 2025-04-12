@@ -164,24 +164,38 @@ export const useScreenerStore = create<ScreenerStore>((set, get) => ({
       const userData = userDoc.data();
       const isAdmin = userData.email === 'theranovex@gmail.com';
 
-      let formsQuery;
+      let formDocs = [];
       if (isAdmin) {
         // Admin can see all forms
-        formsQuery = query(
+        // Use only orderBy without complex filtering that requires a composite index
+        const formsQuery = query(
           collection(db, 'screenerForms'),
           orderBy('createdAt', 'desc')
         );
+        const querySnapshot = await getDocs(formsQuery);
+        formDocs = querySnapshot.docs;
       } else {
         // Partners can only see forms assigned to them
-        formsQuery = query(
-          collection(db, 'screenerForms'),
-          where('assignedPartners', 'array-contains', user.uid),
-          orderBy('createdAt', 'desc')
-        );
+        // Split into two steps to avoid the need for composite index
+        // First, get all forms
+        const allFormsQuery = query(collection(db, 'screenerForms'));
+        const allFormsSnapshot = await getDocs(allFormsQuery);
+        
+        // Then filter on the client side for forms assigned to this partner
+        formDocs = allFormsSnapshot.docs.filter(doc => {
+          const data = doc.data();
+          return data.assignedPartners && data.assignedPartners.includes(user.uid);
+        });
+        
+        // Sort manually since we can't use orderBy with the composite index
+        formDocs.sort((a, b) => {
+          const aDate = a.data().createdAt?.toDate() || new Date(0);
+          const bDate = b.data().createdAt?.toDate() || new Date(0);
+          return bDate.getTime() - aDate.getTime(); // descending order
+        });
       }
 
-      const querySnapshot = await getDocs(formsQuery);
-      const forms = querySnapshot.docs.map(doc => ({
+      const forms = formDocs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         createdAt: doc.data().createdAt?.toDate() || new Date(),

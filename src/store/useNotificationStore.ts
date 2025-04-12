@@ -33,7 +33,7 @@ interface NotificationStore {
   error: string | null;
   fetchNotifications: (partnerId: string) => Promise<void>;
   markAsRead: (notificationId: string) => Promise<void>;
-  sendNotification: (partnerId: string, title: string, message: string, type: 'admin' | 'lead', leadId?: string) => Promise<void>;
+  sendNotification: (partnerId: string, title: string, message: string, type: 'admin' | 'lead' | 'system', leadId?: string) => Promise<string>;
   subscribeToNotifications: (partnerId: string) => () => void;
 }
 
@@ -44,6 +44,12 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   error: null,
 
   fetchNotifications: async (partnerId: string) => {
+    if (!partnerId) {
+      console.error('Partner ID is null or undefined. Cannot fetch notifications.');
+      set({ error: 'Invalid partner ID', isLoading: false });
+      return;
+    }
+    
     set({ isLoading: true, error: null });
     try {
       const notificationsRef = collection(db, `partners/${partnerId}/notifications`);
@@ -71,6 +77,13 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   },
 
   subscribeToNotifications: (partnerId: string) => {
+    // Check for valid partnerId before attempting to query
+    if (!partnerId) {
+      console.error('Partner ID is null or undefined. Cannot subscribe to notifications.');
+      set({ error: 'Invalid partner ID' });
+      return () => {}; // Return an empty unsubscribe function
+    }
+    
     const notificationsRef = collection(db, `partners/${partnerId}/notifications`);
     const q = query(
       notificationsRef,
@@ -86,7 +99,8 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
 
       set({
         notifications,
-        unreadCount: notifications.filter(n => !n.read).length
+        unreadCount: notifications.filter(n => !n.read).length,
+        error: null // Clear any previous errors
       });
     }, (error) => {
       console.error('Error subscribing to notifications:', error);
@@ -120,7 +134,12 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
     }
   },
 
-  sendNotification: async (partnerId: string, title: string, message: string, type: 'admin' | 'lead', leadId?: string) => {
+  sendNotification: async (partnerId: string, title: string, message: string, type: 'admin' | 'lead' | 'system', leadId?: string) => {
+    if (!partnerId) {
+      console.error('Partner ID is null or undefined. Cannot send notification.');
+      throw new Error('Invalid partner ID');
+    }
+    
     try {
       const batch = writeBatch(db);
 
@@ -153,7 +172,14 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
 
       batch.set(messageRef, messageData);
 
-      // Commit both operations atomically
+      // Create a global notification entry for real-time updates
+      const globalNotificationRef = doc(collection(db, 'notifications'));
+      batch.set(globalNotificationRef, {
+        ...notificationData,
+        id: notificationRef.id
+      });
+
+      // Commit all operations atomically
       await batch.commit();
 
       // Return the notification ID

@@ -4,36 +4,64 @@
     ".write": "auth != null",
     "partners": {
       "$partnerId": {
-        ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)",
-        ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)",
-        "customers": {
-          ".indexOn": ["createdAt", "status"],
-          "$customerId": {
-            ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)",
-            ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)"
-          }
-        },
+        ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $partnerId)",
+        ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $partnerId)",
         "leads": {
           ".indexOn": ["createdAt", "status"],
           "$leadId": {
-            ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)",
-            ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $partnerId)"
+            ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $partnerId)",
+            ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $partnerId)"
+          }
+        },
+        "notifications": {
+          ".indexOn": ["createdAt", "read"],
+          "$notificationId": {
+            ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $partnerId)",
+            ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $partnerId)"
+          }
+        },
+        "messages": {
+          ".indexOn": ["timestamp"],
+          "$messageId": {
+            ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $partnerId)",
+            ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $partnerId)"
           }
         }
       }
     },
     "messages": {
-      ".indexOn": ["createdAt", "leadId"],
+      ".indexOn": ["createdAt", "senderId", "recipientId"],
       "$messageId": {
-        ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || data.child('senderId').val() == auth.uid || data.child('recipientId').val() == auth.uid)",
-        ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || !data.exists() || data.child('senderId').val() == auth.uid)"
+        ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || data.child('senderId').val() == auth.uid || data.child('recipientId').val() == auth.uid)",
+        ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || !data.exists() || data.child('senderId').val() == auth.uid)"
       }
     },
     "notifications": {
       "$userId": {
-        ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $userId)",
-        ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.uid == $userId)",
+        ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $userId)",
+        ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $userId)",
         ".indexOn": ["createdAt", "read"]
+      }
+    },
+    "screenerForms": {
+      ".read": "auth != null",
+      ".write": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com')"
+    },
+    "customers": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "activity_logs": {
+      ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com')",
+      ".write": "false" // Only Functions can write logs
+    },
+    "billing": {
+      ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com')",
+      ".write": "false", // Only Functions can write billing data
+      "transactions": {
+        "$userId": {
+          ".read": "auth != null && (auth.token.email == 'theranovex@gmail.com' || auth.token.email == 'digitaltackler@gmail.com' || auth.uid == $userId)"
+        }
       }
     }
   }
